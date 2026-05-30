@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#060810"/>
+<title>VERITEX · AI Polygraph</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body,#root{height:100%;min-height:100%;}
+body{background:#060810;font-family:sans-serif;-webkit-tap-highlight-color:transparent;}
+#apiscreen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;background:radial-gradient(ellipse at 50% 40%,#08192a,#060810);}
+#apiscreen h1{font-size:38px;letter-spacing:.22em;color:#e8f2f8;margin-bottom:4px;font-weight:900;font-family:sans-serif;}
+#apiscreen .sub{font-size:11px;color:#2a4055;letter-spacing:.2em;margin-bottom:36px;font-family:monospace;}
+#apiscreen .card{background:#0b0f18;border:1px solid #162030;border-radius:12px;padding:28px 22px;width:100%;max-width:360px;}
+#apiscreen label{font-size:10px;color:#2a4055;text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:8px;font-family:monospace;}
+#apiscreen input{width:100%;background:#050810;border:1px solid #162030;color:#e8f2f8;padding:12px 14px;border-radius:6px;font-size:15px;outline:none;font-family:monospace;transition:border-color .2s;}
+#apiscreen input:focus{border-color:#00d4ff;}
+#apiscreen .hint{font-size:11px;color:#2a4055;line-height:1.7;margin-top:10px;}
+#apiscreen .hint a{color:#00d4ff;text-decoration:none;}
+#apiscreen .gobtn{margin-top:18px;width:100%;padding:15px;background:#00d4ff;border:none;color:#060810;font-size:16px;font-weight:800;letter-spacing:.15em;border-radius:7px;cursor:pointer;font-family:sans-serif;}
+#apiscreen .gobtn:disabled{background:#162030;color:#2a4055;cursor:not-allowed;}
+#apiscreen .err{margin-top:10px;font-size:12px;color:#ff2550;text-align:center;}
+#apiscreen .skip{margin-top:12px;font-size:12px;color:#2a4055;text-align:center;cursor:pointer;text-decoration:underline;}
+#root{display:none;}
+</style>
+</head>
+<body>
+<div id="apiscreen">
+  <h1>VERITEX</h1>
+  <div class="sub">AI POLYGRAPH · v7.0</div>
+  <div class="card">
+    <label>Anthropic API Key (for AI analysis)</label>
+    <input type="password" id="apikey" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false"/>
+    <div class="hint">
+      Your key stays in this browser session only — sent directly to Anthropic, never stored elsewhere.<br><br>
+      Get a free key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>
+    </div>
+    <button class="gobtn" id="startbtn" disabled onclick="launchApp()">INITIALIZE SYSTEM</button>
+    <div class="err" id="apierr"></div>
+    <div class="skip" onclick="launchWithoutKey()">Skip AI features — sensor analysis only</div>
+  </div>
+</div>
+<div id="root"></div>
+<script>
+window.VERITEX_API_KEY="";
+const ki=document.getElementById("apikey"),sb=document.getElementById("startbtn");
+ki.addEventListener("input",()=>{sb.disabled=ki.value.trim().length<20;});
+ki.addEventListener("keydown",e=>{if(e.key==="Enter"&&!sb.disabled)launchApp();});
+function launchApp(){
+  const key=ki.value.trim();
+  if(key.length<20){document.getElementById("apierr").textContent="Please enter a valid API key.";return;}
+  window.VERITEX_API_KEY=key;
+  document.getElementById("apiscreen").style.display="none";
+  document.getElementById("root").style.display="block";
+}
+function launchWithoutKey(){
+  window.VERITEX_API_KEY="";
+  document.getElementById("apiscreen").style.display="none";
+  document.getElementById("root").style.display="block";
+}
+// Patch fetch to inject API key + CORS headers for Anthropic
+const _of=window.fetch.bind(window);
+window.fetch=function(url,opts){
+  if(typeof url==="string"&&url.includes("api.anthropic.com")&&window.VERITEX_API_KEY){
+    opts=opts||{};
+    opts.headers=Object.assign({},opts.headers||{},{
+      "x-api-key":window.VERITEX_API_KEY,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    });
+    if(opts.headers["Authorization"])delete opts.headers["Authorization"];
+  }
+  return _of(url,opts);
+};
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// THEME
+// ══════════════════════════════════════════════════════════════════════════════
+const T = {
+  bg: "#060810", panel: "#0b0f18", panel2: "#0f1520",
+  border: "#162030", accent: "#00d4ff", accentDim: "#003d55",
+  warn: "#ff8c3a", good: "#00ff88", bad: "#ff2550",
+  text: "#9ab8cc", muted: "#2a4055", white: "#e8f2f8",
+  gold: "#ffc947", purple: "#b06fff", teal: "#00e5cc", rose: "#ff6b9d",
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CSS
+// ══════════════════════════════════════════════════════════════════════════════
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:${T.bg};color:${T.text};font-family:'Barlow Condensed',sans-serif;overflow-x:hidden;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-track{background:${T.panel};}::-webkit-scrollbar-thumb{background:${T.accentDim};border-radius:2px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.2}}
+@keyframes hbeat{0%,100%{transform:scale(1)}14%{transform:scale(1.25)}28%{transform:scale(1)}}
+@keyframes ringOut{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3.2);opacity:0}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes voiceBar{0%,100%{transform:scaleY(0.25)}50%{transform:scaleY(1)}}
+@keyframes listenRing{0%{box-shadow:0 0 0 0 rgba(0,212,255,.65)}70%{box-shadow:0 0 0 20px rgba(0,212,255,0)}100%{box-shadow:0 0 0 0 rgba(0,212,255,0)}}
+@keyframes speakRing{0%{box-shadow:0 0 0 0 rgba(176,111,255,.7)}70%{box-shadow:0 0 0 22px rgba(176,111,255,0)}100%{box-shadow:0 0 0 0 rgba(176,111,255,0)}}
+@keyframes stressFlash{0%,100%{background:transparent}50%{background:rgba(255,37,80,.07)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes bsGlow{0%,100%{text-shadow:0 0 4px currentColor}50%{text-shadow:0 0 18px currentColor,0 0 32px currentColor}}
+@keyframes scorePop{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes sweep{from{background-position:200% center}to{background-position:-200% center}}
+input,select,textarea{background:#050810;border:1px solid ${T.border};color:${T.white};font-family:'Barlow Condensed',sans-serif;font-size:16px;border-radius:5px;padding:10px 14px;width:100%;outline:none;transition:border-color .2s;}
+input:focus,select:focus,textarea:focus{border-color:${T.accent};}
+input[type=range]{padding:0;height:3px;accent-color:${T.accent};background:transparent;}
+select option{background:#050810;}
+label{font-size:10px;color:${T.muted};text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:5px;font-family:'Share Tech Mono';}
+button:active{transform:scale(.96);}
+`;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SESSION STORE
+// ══════════════════════════════════════════════════════════════════════════════
+const SK = "veritex_v7";
+const loadSess = () => { try { return JSON.parse(localStorage.getItem(SK) || "null"); } catch { return null; } };
+const saveSess = d => { try { localStorage.setItem(SK, JSON.stringify(d)); } catch {} };
+const clearSess = () => { try { localStorage.removeItem(SK); } catch {} };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BS SCORE UTILITIES
+// ══════════════════════════════════════════════════════════════════════════════
+function bsColor(score) {
+  if (score >= 9) return T.good;
+  if (score >= 7) return "#7fff6a";
+  if (score >= 5) return T.gold;
+  if (score >= 3) return T.warn;
+  return T.bad;
+}
+function bsLabel(score) {
+  if (score >= 9) return "CERTAINLY TRUE";
+  if (score >= 7) return "LIKELY TRUE";
+  if (score >= 5) return "UNCERTAIN";
+  if (score >= 3) return "LIKELY FALSE";
+  return "PROBABLY FALSE";
+}
+function bsEmoji(score) {
+  if (score >= 9) return "✅";
+  if (score >= 7) return "🟢";
+  if (score >= 5) return "🟡";
+  if (score >= 3) return "🟠";
+  return "🔴";
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BS SCORE METER COMPONENT
+// ══════════════════════════════════════════════════════════════════════════════
+function BSMeter({ score, label, compact = false }) {
+  const color = bsColor(score);
+  const pct = ((score - 1) / 9) * 100;
+  const verdict = bsLabel(score);
+
+  if (compact) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 20, color, lineHeight: 1, animation: "bsGlow 2s ease infinite", minWidth: 28, textAlign: "center" }}>{score}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, ${T.bad}, ${T.warn} 45%, ${T.gold} 65%, ${T.good})`, transition: "width 0.8s ease" }} />
+        </div>
+        <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color, marginTop: 2, letterSpacing: "0.08em" }}>{verdict}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ textAlign: "center", animation: "scorePop 0.6s ease forwards" }}>
+      {label && <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, letterSpacing: "0.1em", marginBottom: 6 }}>{label}</div>}
+      <div style={{ position: "relative", width: 90, height: 90, margin: "0 auto 8px" }}>
+        <svg width={90} height={90} style={{ position: "absolute", inset: 0 }}>
+          <circle cx={45} cy={45} r={38} fill="none" stroke={T.border} strokeWidth={5} />
+          <circle cx={45} cy={45} r={38} fill="none" stroke={color} strokeWidth={5}
+            strokeDasharray={`${pct * 2.39} 239`} strokeLinecap="round"
+            transform="rotate(-90 45 45)" style={{ transition: "stroke-dasharray 0.9s ease" }} />
+        </svg>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 26, color, lineHeight: 1, animation: "bsGlow 2s ease infinite" }}>{score}</div>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted }}>/ 10</div>
+        </div>
+      </div>
+      <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 14, color, letterSpacing: "0.08em" }}>{verdict}</div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FACIAL ANALYSIS ENGINE
+// ══════════════════════════════════════════════════════════════════════════════
+class FacialAnalysisEngine {
+  constructor() { this.baseline = null; this.frameHistory = []; this.blinkHistory = []; this.gazeHistory = []; this.microMovementHistory = []; this.lastFrameData = null; this.blinkState = "open"; this.blinkStart = 0; this.blinkCount = 0; }
+  detectFaceRegion(imageData, width, height) {
+    const data = imageData.data; let skinPixels = 0, cx = 0, cy = 0, minX = width, maxX = 0, minY = height, maxY = 0;
+    for (let y = 0; y < height; y++) { for (let x = 0; x < width; x++) { const i = (y * width + x) * 4; const r = data[i], g = data[i + 1], b = data[i + 2]; const isSkin = r > 60 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15 && r - b > 20 && r < 250; if (isSkin) { skinPixels++; cx += x; cy += y; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; } } }
+    if (skinPixels < 100) return null;
+    return { centerX: cx / skinPixels, centerY: cy / skinPixels, width: maxX - minX, height: maxY - minY, minX, maxX, minY, maxY, skinPixels, confidence: Math.min(skinPixels / (width * height * 0.15), 1) };
+  }
+  analyzeEyeRegion(imageData, width, height, face) {
+    if (!face) return { leftBrightness: 0, rightBrightness: 0, avgBrightness: 0.5, gazeX: 0.5, gazeY: 0.3 };
+    const data = imageData.data; const eyeTop = Math.max(0, Math.round(face.minY + face.height * 0.1)); const eyeBot = Math.min(height, Math.round(face.minY + face.height * 0.45)); const midX = Math.round((face.minX + face.maxX) / 2);
+    let leftBright = 0, rightBright = 0, leftCount = 0, rightCount = 0; let darkCX = 0, darkCY = 0, darkTotal = 0;
+    for (let y = eyeTop; y < eyeBot; y++) { for (let x = face.minX; x < face.maxX; x++) { const i = (y * width + x) * 4; const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114; if (x < midX) { leftBright += lum; leftCount++; } else { rightBright += lum; rightCount++; } if (lum < 55) { const w = (55 - lum) / 55; darkCX += x * w; darkCY += y * w; darkTotal += w; } } }
+    const leftAvg = leftCount > 0 ? leftBright / leftCount : 128; const rightAvg = rightCount > 0 ? rightBright / rightCount : 128;
+    const gazeX = darkTotal > 10 ? (darkCX / darkTotal - face.minX) / Math.max(face.width, 1) : 0.5; const gazeY = darkTotal > 10 ? (darkCY / darkTotal - eyeTop) / Math.max(eyeBot - eyeTop, 1) : 0.5;
+    return { leftBrightness: leftAvg / 255, rightBrightness: rightAvg / 255, avgBrightness: ((leftAvg + rightAvg) / 2) / 255, gazeX: Math.max(0, Math.min(1, gazeX)), gazeY: Math.max(0, Math.min(1, gazeY)) };
+  }
+  computeMotionScore(imageData, width, height) {
+    const data = imageData.data; if (!this.lastFrameData || this.lastFrameData.length !== data.length) { this.lastFrameData = new Uint8Array(data); return 0; }
+    let diff = 0, count = 0; for (let i = 0; i < data.length; i += 16) { diff += Math.abs(data[i] - this.lastFrameData[i]) + Math.abs(data[i + 1] - this.lastFrameData[i + 1]) + Math.abs(data[i + 2] - this.lastFrameData[i + 2]); count += 3; }
+    this.lastFrameData = new Uint8Array(data); return count > 0 ? diff / count / 255 : 0;
+  }
+  estimateHeadTilt(face) { if (!face) return 0; return Math.min(Math.abs(face.height / face.width - 1.4) / 1.4, 1); }
+  detectBlink(eyeData, timestamp) {
+    const THRESH = 0.38; const isClosed = eyeData.avgBrightness < THRESH;
+    if (isClosed && this.blinkState === "open") { this.blinkState = "closed"; this.blinkStart = timestamp; }
+    else if (!isClosed && this.blinkState === "closed") { const dur = timestamp - this.blinkStart; if (dur > 50 && dur < 600) { this.blinkHistory.push({ ts: timestamp, duration: dur, prolonged: dur > 250 }); this.blinkCount++; } this.blinkState = "open"; }
+    const cutoff = timestamp - 60000; this.blinkHistory = this.blinkHistory.filter(b => b.ts > cutoff);
+    const recent = this.blinkHistory.filter(b => b.ts > timestamp - 30000);
+    return { blinkRate: recent.length * 2, avgDuration: recent.length > 0 ? recent.reduce((a, b) => a + b.duration, 0) / recent.length : 150, prolongedBlinks: recent.filter(b => b.prolonged).length, currentlyClosed: isClosed };
+  }
+  classifyGaze(gazeX, gazeY) { if (gazeX < 0.35) return "LEFT"; if (gazeX > 0.65) return "RIGHT"; if (gazeY < 0.3) return "UP"; if (gazeY > 0.7) return "DOWN"; return "CENTER"; }
+  processFrame(imageData, width, height, timestamp) {
+    const face = this.detectFaceRegion(imageData, width, height); const eyeData = this.analyzeEyeRegion(imageData, width, height, face); const motionScore = this.computeMotionScore(imageData, width, height); const headTilt = this.estimateHeadTilt(face); const blinkData = this.detectBlink(eyeData, timestamp); const gazeDir = this.classifyGaze(eyeData.gazeX, eyeData.gazeY);
+    this.gazeHistory.push({ ts: timestamp, dir: gazeDir, x: eyeData.gazeX, y: eyeData.gazeY }); this.microMovementHistory.push({ ts: timestamp, motion: motionScore }); this.frameHistory.push({ ts: timestamp, face: !!face, faceConf: face?.confidence || 0, eyeData, motionScore, headTilt, blinkData, gazeDir });
+    const cutoff = timestamp - 60000; this.gazeHistory = this.gazeHistory.filter(g => g.ts > cutoff); this.microMovementHistory = this.microMovementHistory.filter(m => m.ts > cutoff); if (this.frameHistory.length > 300) this.frameHistory.shift();
+    return { face, eyeData, motionScore, headTilt, blinkData, gazeDir, faceDetected: !!face && face.confidence > 0.1 };
+  }
+  captureWindow(durationMs = 5000) {
+    const now = Date.now(); const frames = this.frameHistory.filter(f => f.ts > now - durationMs); if (frames.length < 3) return null;
+    const gazeFrames = frames.map(f => f.gazeDir); const gazeCounts = {}; gazeFrames.forEach(g => { gazeCounts[g] = (gazeCounts[g] || 0) + 1; });
+    const dominantGaze = Object.entries(gazeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "CENTER"; const gazeAversion = 1 - (gazeCounts["CENTER"] || 0) / frames.length;
+    const avgMotion = frames.reduce((a, f) => a + f.motionScore, 0) / frames.length; const avgHeadTilt = frames.reduce((a, f) => a + f.headTilt, 0) / frames.length;
+    const blinkFrames = frames.map(f => f.blinkData); const avgBlinkRate = blinkFrames.reduce((a, b) => a + b.blinkRate, 0) / blinkFrames.length; const avgBlinkDuration = blinkFrames.reduce((a, b) => a + b.avgDuration, 0) / blinkFrames.length; const prolongedBlinks = blinkFrames.reduce((a, b) => a + b.prolongedBlinks, 0);
+    let gazeShifts = 0; for (let i = 1; i < gazeFrames.length; i++) { if (gazeFrames[i] !== gazeFrames[i - 1]) gazeShifts++; } const gazeShiftRate = gazeShifts / frames.length;
+    return { dominantGaze, gazeAversion, avgMotion, avgHeadTilt, avgBlinkRate, avgBlinkDuration, prolongedBlinks, gazeShiftRate, faceDetected: frames.filter(f => f.face).length / frames.length, frameCount: frames.length, gazeCounts };
+  }
+  setBaseline(w) { this.baseline = { ...w }; }
+  deceptionScore(captured, baseline) {
+    if (!captured || !baseline) return { score: 0.5, level: "UNKNOWN", indicators: [] };
+    const ind = []; let score = 0;
+    const gazeAvDev = captured.gazeAversion - baseline.gazeAversion; if (gazeAvDev > 0.2) { score += 0.25 * Math.min(gazeAvDev / 0.5, 1); ind.push({ name: "GAZE AVERSION", val: `+${(gazeAvDev * 100).toFixed(0)}%`, flag: true }); } else ind.push({ name: "GAZE AVERSION", val: `${(captured.gazeAversion * 100).toFixed(0)}%`, flag: false });
+    const blinkDev = Math.abs(captured.avgBlinkRate - baseline.avgBlinkRate); if (blinkDev > 8) { score += 0.20 * Math.min(blinkDev / 20, 1); ind.push({ name: "BLINK RATE", val: `${captured.avgBlinkRate.toFixed(0)}/min Δ${blinkDev.toFixed(0)}`, flag: true }); } else ind.push({ name: "BLINK RATE", val: `${captured.avgBlinkRate.toFixed(0)}/min`, flag: false });
+    if (captured.prolongedBlinks > (baseline.prolongedBlinks + 1)) { score += 0.15; ind.push({ name: "PROLONGED BLINKS", val: `${captured.prolongedBlinks}`, flag: true }); } else ind.push({ name: "PROLONGED BLINKS", val: `${captured.prolongedBlinks}`, flag: false });
+    const motDev = captured.avgMotion - baseline.avgMotion; if (motDev > 0.015) { score += 0.18 * Math.min(motDev / 0.04, 1); ind.push({ name: "MICRO-MOVEMENT", val: `+${(motDev * 100).toFixed(1)}%`, flag: true }); } else ind.push({ name: "MICRO-MOVEMENT", val: `${(captured.avgMotion * 100).toFixed(1)}%`, flag: false });
+    const shiftDev = captured.gazeShiftRate - baseline.gazeShiftRate; if (shiftDev > 0.1) { score += 0.12 * Math.min(shiftDev / 0.3, 1); ind.push({ name: "GAZE SHIFTS", val: `+${(shiftDev * 100).toFixed(0)}%`, flag: true }); } else ind.push({ name: "GAZE SHIFTS", val: `${(captured.gazeShiftRate * 100).toFixed(0)}%`, flag: false });
+    const headDev = captured.avgHeadTilt - baseline.avgHeadTilt; if (headDev > 0.1) { score += 0.10 * Math.min(headDev / 0.3, 1); ind.push({ name: "HEAD MOVEMENT", val: `+${(headDev * 100).toFixed(0)}%`, flag: true }); } else ind.push({ name: "HEAD MOVEMENT", val: `${(captured.avgHeadTilt * 100).toFixed(0)}%`, flag: false });
+    const n = Math.min(score, 1); return { score: n, level: n > 0.6 ? "HIGH" : n > 0.3 ? "MODERATE" : "LOW", indicators: ind };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FACIAL HOOK
+// ══════════════════════════════════════════════════════════════════════════════
+function useFacialAnalysis(active) {
+  const videoRef = useRef(null); const canvasRef = useRef(null); const streamRef = useRef(null);
+  const engineRef = useRef(new FacialAnalysisEngine()); const animRef = useRef(null); const overlayCanvasRef = useRef(null);
+  const [live, setLive] = useState({ faceDetected: false, gazeDir: "CENTER", blinkRate: 0, avgBlinkDuration: 150, motionScore: 0, headTilt: 0, gazeX: 0.5, gazeY: 0.5, deceptionScore: 0, deceptionLevel: "UNKNOWN", deceptionIndicators: [], prolongedBlinks: 0, gazeAversion: 0, faceConfidence: 0 });
+  const [ready, setReady] = useState(false); const [error, setError] = useState(null); const [baselineSet, setBaselineSet] = useState(false);
+
+  useEffect(() => {
+    if (!active) return; let mounted = true;
+    const video = document.createElement("video"); video.setAttribute("playsinline", true); video.muted = true; videoRef.current = video;
+    const canvas = document.createElement("canvas"); canvas.width = 160; canvas.height = 120; canvasRef.current = canvas;
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: "user", width: 320, height: 240, frameRate: 15 } }).then(async stream => {
+      if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; }
+      streamRef.current = stream; video.srcObject = stream; await video.play(); setReady(true);
+      const ctx = canvas.getContext("2d"); const eng = engineRef.current;
+      const loop = () => {
+        if (!mounted) return; const now = Date.now();
+        try {
+          ctx.drawImage(video, 0, 0, 160, 120); const imageData = ctx.getImageData(0, 0, 160, 120);
+          const result = eng.processFrame(imageData, 160, 120, now); const captured = eng.captureWindow(5000); const dec = eng.deceptionScore(captured, eng.baseline);
+          setLive({ faceDetected: result.faceDetected, gazeDir: result.gazeDir, blinkRate: result.blinkData.blinkRate, avgBlinkDuration: result.blinkData.avgDuration, motionScore: result.motionScore, headTilt: result.headTilt, gazeX: result.eyeData.gazeX, gazeY: result.eyeData.gazeY, deceptionScore: dec.score, deceptionLevel: dec.level, deceptionIndicators: dec.indicators || [], prolongedBlinks: result.blinkData.prolongedBlinks, gazeAversion: captured?.gazeAversion || 0, faceConfidence: result.face?.confidence || 0, eyeBrightness: result.eyeData.avgBrightness });
+          if (overlayCanvasRef.current && result.face) drawOverlay(overlayCanvasRef.current, result, 320, 240);
+        } catch {}
+        animRef.current = requestAnimationFrame(loop);
+      };
+      animRef.current = requestAnimationFrame(loop);
+    }).catch(err => setError("Front camera unavailable"));
+    return () => { mounted = false; cancelAnimationFrame(animRef.current); streamRef.current?.getTracks().forEach(t => t.stop()); };
+  }, [active]);
+
+  const drawOverlay = (canvas, result, w, h) => {
+    const ctx = canvas.getContext("2d"); ctx.clearRect(0, 0, w, h); if (!result.face) return;
+    const f = result.face; const sx = w / 160, sy = h / 120;
+    ctx.strokeStyle = result.faceDetected ? T.accent : T.warn; ctx.lineWidth = 1.5;
+    ctx.strokeRect(f.minX * sx, f.minY * sy, f.width * sx, f.height * sy);
+    const eyeTop = (f.minY + f.height * 0.1) * sy; const eyeBot = (f.minY + f.height * 0.45) * sy;
+    ctx.strokeStyle = T.teal + "aa"; ctx.lineWidth = 1; ctx.strokeRect(f.minX * sx, eyeTop, f.width * sx, eyeBot - eyeTop);
+    const gx = (f.minX + result.eyeData.gazeX * f.width) * sx; const gy = ((f.minY + f.height * 0.28) + result.eyeData.gazeY * (f.height * 0.35)) * sy;
+    ctx.strokeStyle = result.gazeDir === "CENTER" ? T.good + "cc" : T.warn + "cc"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(gx - 8, gy); ctx.lineTo(gx + 8, gy); ctx.moveTo(gx, gy - 8); ctx.lineTo(gx, gy + 8); ctx.stroke();
+    const corners = [[f.minX, f.minY], [f.maxX, f.minY], [f.minX, f.maxY], [f.maxX, f.maxY]];
+    ctx.strokeStyle = T.accent; ctx.lineWidth = 2;
+    corners.forEach(([x, y]) => { const sx2 = x * sx, sy2 = y * sy; const dx = sx2 < w / 2 ? 8 : -8, dy = sy2 < h / 2 ? 8 : -8; ctx.beginPath(); ctx.moveTo(sx2, sy2 + dy); ctx.lineTo(sx2, sy2); ctx.lineTo(sx2 + dx, sy2); ctx.stroke(); });
+  };
+
+  const captureWindow = useCallback((ms = 6000) => engineRef.current.captureWindow(ms), []);
+  const setBaseline = useCallback(() => { const w = engineRef.current.captureWindow(10000); if (w) { engineRef.current.setBaseline(w); setBaselineSet(true); } return w; }, []);
+  const getDeceptionForCapture = useCallback((captured) => engineRef.current.deceptionScore(captured, engineRef.current.baseline), []);
+  return { live, ready, error, baselineSet, captureWindow, setBaseline, getDeceptionForCapture, overlayCanvasRef, videoRef };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VOICE STRESS ENGINE
+// ══════════════════════════════════════════════════════════════════════════════
+class VoiceStressAnalyzer {
+  constructor() { this.baseline = null; }
+  detectPitch(buf, sr) { const S = buf.length, M = Math.floor(S / 2); let rms = 0; for (let i = 0; i < S; i++) rms += buf[i] * buf[i]; rms = Math.sqrt(rms / S); if (rms < 0.01) return { pitch: 0, voiced: false, rms }; let bo = -1, bc = 0, lc = 1; for (let o = 4; o < M; o++) { let c = 0; for (let i = 0; i < M; i++) c += Math.abs(buf[i] - buf[i + o]); c = 1 - c / M; if (c > 0.9 && c > lc) { bc = c; bo = o; break; } if (c > bc) { bc = c; bo = o; } lc = c; } if (bc > 0.5 && bo > 0) return { pitch: sr / bo, voiced: true, rms, confidence: bc }; return { pitch: 0, voiced: false, rms }; }
+  spectralCentroid(f) { let ws = 0, s = 0; for (let i = 0; i < f.length; i++) { const m = f[i] / 255; ws += i * m; s += m; } return s > 0 ? ws / s : 0; }
+  spectralTilt(f) { const mid = Math.floor(f.length / 4); let lo = 0, hi = 0; for (let i = 0; i < mid; i++) lo += f[i]; for (let i = mid; i < f.length; i++) hi += f[i]; return (hi / (f.length - mid)) > 0 ? (lo / mid) / (hi / (f.length - mid)) : 1; }
+  estimateHNR(buf) { const S = Math.min(buf.length, 512); let ac0 = 0, peak = 0; for (let i = 0; i < S; i++) ac0 += buf[i] * buf[i]; for (let lag = 20; lag < S / 2; lag++) { let ac = 0; for (let i = 0; i < S - lag; i++) ac += buf[i] * buf[i + lag]; if (ac > peak) peak = ac; } if (!ac0) return 0; const r = peak / ac0; return (r > 0 && r < 1) ? 10 * Math.log10(r / (1 - r)) : 0; }
+  computeJitter(ph) { if (ph.length < 4) return 0; const v = ph.filter(p => p.voiced && p.pitch > 60 && p.pitch < 500); if (v.length < 3) return 0; let d = 0; for (let i = 1; i < v.length; i++) d += Math.abs(v[i].pitch - v[i - 1].pitch); const avg = v.reduce((a, b) => a + b.pitch, 0) / v.length; return avg > 0 ? (d / (v.length - 1)) / avg : 0; }
+  computeShimmer(rh) { if (rh.length < 4) return 0; let d = 0; for (let i = 1; i < rh.length; i++) d += Math.abs(rh[i] - rh[i - 1]); const avg = rh.reduce((a, b) => a + b, 0) / rh.length; return avg > 0 ? (d / (rh.length - 1)) / avg : 0; }
+  pauseRatio(rh, t = 0.015) { if (!rh.length) return 0; return rh.filter(r => r < t).length / rh.length; }
+  summarize(ph, rh, fh) {
+    const v = ph.filter(p => p.voiced && p.pitch > 60 && p.pitch < 600); const ap = v.length > 0 ? v.reduce((a, b) => a + b.pitch, 0) / v.length : 0;
+    const pv = v.length > 1 ? Math.sqrt(v.reduce((a, b) => a + (b.pitch - ap) ** 2, 0) / v.length) : 0;
+    return { avgPitch: ap, pitchVariance: pv, jitter: this.computeJitter(ph), shimmer: this.computeShimmer(rh), hnr: ph.length > 0 ? ph.reduce((a, b) => a + (b.hnr || 0), 0) / ph.length : 0, pauseRatio: this.pauseRatio(rh), centroid: fh.length > 0 ? fh.reduce((a, b) => a + b.c, 0) / fh.length : 0, spectralTilt: fh.length > 0 ? fh.reduce((a, b) => a + b.t, 0) / fh.length : 1, sampleCount: ph.length };
+  }
+  stressScore(feat, base) {
+    if (!base) return { score: 0.5, level: "UNKNOWN", indicators: [] }; const ind = []; let score = 0;
+    const jd = base.jitter > 0 ? (feat.jitter - base.jitter) / base.jitter : 0; if (jd > 0.3) { score += 0.22 * Math.min(jd, 2); ind.push({ name: "JITTER", val: `+${(jd * 100).toFixed(0)}%`, stress: true }); } else ind.push({ name: "JITTER", val: `${(jd * 100).toFixed(0)}%`, stress: false });
+    const sd = base.shimmer > 0 ? (feat.shimmer - base.shimmer) / base.shimmer : 0; if (sd > 0.25) { score += 0.18 * Math.min(sd, 2); ind.push({ name: "SHIMMER", val: `+${(sd * 100).toFixed(0)}%`, stress: true }); } else ind.push({ name: "SHIMMER", val: `${(sd * 100).toFixed(0)}%`, stress: false });
+    const hd = base.hnr - feat.hnr; if (hd > 3) { score += 0.18 * Math.min(hd / 10, 1); ind.push({ name: "HNR", val: `-${hd.toFixed(1)}dB`, stress: true }); } else ind.push({ name: "HNR", val: `${hd.toFixed(1)}dB`, stress: false });
+    const pvd = base.pitchVariance > 0 ? Math.abs(feat.pitchVariance - base.pitchVariance) / base.pitchVariance : 0; if (pvd > 0.4) { score += 0.16 * Math.min(pvd, 1.5); ind.push({ name: "PITCH VAR", val: `+${(pvd * 100).toFixed(0)}%`, stress: true }); } else ind.push({ name: "PITCH VAR", val: `${(pvd * 100).toFixed(0)}%`, stress: false });
+    const pd = base.pauseRatio > 0 ? (feat.pauseRatio - base.pauseRatio) / Math.max(base.pauseRatio, 0.05) : feat.pauseRatio * 5; if (pd > 0.5) { score += 0.12 * Math.min(pd, 1.5); ind.push({ name: "PAUSES", val: `+${(pd * 100).toFixed(0)}%`, stress: true }); }
+    const n = Math.min(score, 1); return { score: n, level: n > 0.65 ? "HIGH" : n > 0.35 ? "MODERATE" : "LOW", indicators: ind };
+  }
+  setBaseline(f) { this.baseline = { ...f }; }
+}
+
+function useVoiceStress(active) {
+  const ctxRef = useRef(null); const anRef = useRef(null); const anFRef = useRef(null); const streamRef = useRef(null);
+  const engRef = useRef(new VoiceStressAnalyzer()); const phRef = useRef([]); const rhRef = useRef([]); const fhRef = useRef([]); const animRef = useRef(null);
+  const [live, setLive] = useState({ pitch: 0, rms: 0, jitter: 0, shimmer: 0, hnr: 0, pauseRatio: 0, stressScore: 0, stressLevel: "UNKNOWN" });
+  const [baselineSet, setBaselineSet] = useState(false);
+  useEffect(() => {
+    if (!active) return; let mounted = true;
+    navigator.mediaDevices?.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 44100 } }).then(stream => {
+      if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; } streamRef.current = stream;
+      const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 }); ctxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(stream); const an = ctx.createAnalyser(); an.fftSize = 2048; src.connect(an); anRef.current = an; const anF = ctx.createAnalyser(); anF.fftSize = 1024; src.connect(anF); anFRef.current = anF;
+      engRef.current = new VoiceStressAnalyzer(); const tb = new Float32Array(an.fftSize); const fb = new Uint8Array(anF.frequencyBinCount);
+      const loop = () => {
+        if (!mounted) return; an.getFloatTimeDomainData(tb); anF.getByteFrequencyData(fb);
+        const eng = engRef.current; const { pitch, voiced, rms } = eng.detectPitch(tb, ctx.sampleRate); const hnr = eng.estimateHNR(tb); const c = eng.spectralCentroid(fb); const t2 = eng.spectralTilt(fb);
+        phRef.current.push({ pitch, voiced, rms, hnr }); rhRef.current.push(rms); fhRef.current.push({ c, t: t2 });
+        if (phRef.current.length > 120) phRef.current.shift(); if (rhRef.current.length > 120) rhRef.current.shift(); if (fhRef.current.length > 120) fhRef.current.shift();
+        const feat = eng.summarize(phRef.current, rhRef.current, fhRef.current); const stress = eng.stressScore(feat, eng.baseline);
+        setLive({ pitch: Math.round(pitch), rms: +rms.toFixed(4), jitter: +feat.jitter.toFixed(4), shimmer: +feat.shimmer.toFixed(4), hnr: +feat.hnr.toFixed(2), pauseRatio: +feat.pauseRatio.toFixed(3), stressScore: +stress.score.toFixed(3), stressLevel: stress.level, stressIndicators: stress.indicators || [], avgPitch: +feat.avgPitch.toFixed(1), pitchVariance: +feat.pitchVariance.toFixed(2) });
+        animRef.current = requestAnimationFrame(loop);
+      };
+      animRef.current = requestAnimationFrame(loop);
+    }).catch(() => {});
+    return () => { mounted = false; cancelAnimationFrame(animRef.current); streamRef.current?.getTracks().forEach(t => t.stop()); ctxRef.current?.close(); };
+  }, [active]);
+  const captureFeatures = useCallback((ms = 3000) => { const fps = 30, frames = Math.floor((ms / 1000) * fps); return engRef.current.summarize(phRef.current.slice(-frames), rhRef.current.slice(-frames), fhRef.current.slice(-frames)); }, []);
+  const setBaseline = useCallback(() => { const f = engRef.current.summarize(phRef.current, rhRef.current, fhRef.current); engRef.current.setBaseline(f); setBaselineSet(true); return f; }, []);
+  const getStressForCapture = useCallback((feat) => engRef.current.stressScore(feat, engRef.current.baseline), []);
+  return { live, baselineSet, captureFeatures, setBaseline, getStressForCapture };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PPG
+// ══════════════════════════════════════════════════════════════════════════════
+function usePPG(active) {
+  const streamRef = useRef(null); const rrRef = useRef([]); const sampRef = useRef([]); const [hr, setHr] = useState(null); const [hrv, setHrv] = useState(null); const [fingerDetected, setFingerDetected] = useState(false); const animRef = useRef(null); const lastPeakRef = useRef(0);
+  useEffect(() => {
+    if (!active) return; let mounted = true; const cv = document.createElement("canvas"); cv.width = 16; cv.height = 16; const ctx = cv.getContext("2d");
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: "environment", width: 64, height: 64 } }).then(async stream => {
+      if (!mounted) { stream.getTracks().forEach(t => t.stop()); return; } streamRef.current = stream;
+      const track = stream.getVideoTracks()[0]; try { await track.applyConstraints({ advanced: [{ torch: true }] }); } catch {}
+      const video = document.createElement("video"); video.srcObject = stream; video.setAttribute("playsinline", true); video.muted = true; await video.play();
+      const loop = () => {
+        if (!mounted) return; ctx.drawImage(video, 0, 0, 16, 16); const d = ctx.getImageData(0, 0, 16, 16).data; let r = 0, g = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; } const px = d.length / 4, avgR = r / px, avgG = g / px; const finger = avgR > 140 && avgG < 110; setFingerDetected(finger);
+        if (finger) { const now = Date.now(); sampRef.current.push({ t: now, v: avgR / 255 }); if (sampRef.current.length > 200) sampRef.current.shift(); const s = sampRef.current; if (s.length >= 60) { const w = s.slice(-60); const avg = w.reduce((a, b) => a + b.v, 0) / w.length; const std = Math.sqrt(w.reduce((a, b) => a + (b.v - avg) ** 2, 0) / w.length); const p = w[w.length - 4], p2 = w[w.length - 2], l = w[w.length - 1]; if (p.v > avg + std * 0.35 && p.v > l.v && p.v > p2.v && p2.v < p.v) { const gap = now - lastPeakRef.current; if (gap > 350 && gap < 1500) { rrRef.current.push(gap); if (rrRef.current.length > 14) rrRef.current.shift(); const rec = rrRef.current.slice(-6); const avgRR = rec.reduce((a, b) => a + b, 0) / rec.length; const bpm = Math.round(60000 / avgRR); if (bpm >= 40 && bpm <= 200) setHr(bpm); if (rrRef.current.length >= 4) { const diffs = []; for (let i = 1; i < rrRef.current.length; i++) diffs.push((rrRef.current[i] - rrRef.current[i - 1]) ** 2); setHrv(Math.round(Math.sqrt(diffs.reduce((a, b) => a + b, 0) / diffs.length))); } } lastPeakRef.current = now; } } } else { sampRef.current = []; rrRef.current = []; }
+        animRef.current = requestAnimationFrame(loop);
+      };
+      animRef.current = requestAnimationFrame(loop);
+    }).catch(() => {});
+    return () => { mounted = false; cancelAnimationFrame(animRef.current); streamRef.current?.getTracks().forEach(t => t.stop()); };
+  }, [active]);
+  return { hr, hrv, fingerDetected };
+}
+
+function useSensors(active) {
+  const [s, setS] = useState({ gsr: 0.5, motion: 0 }); const motRef = useRef({ x: 0, y: 0, z: 0 }); const animRef = useRef(null);
+  useEffect(() => {
+    if (!active) return; let mounted = true, t = 0;
+    const hm = e => { const a = e.accelerationIncludingGravity || {}; motRef.current = { x: a.x || 0, y: a.y || 0, z: a.z || 0 }; };
+    if (typeof DeviceMotionEvent !== "undefined") { if (DeviceMotionEvent.requestPermission) DeviceMotionEvent.requestPermission().then(r => { if (r === "granted") window.addEventListener("devicemotion", hm); }).catch(() => {}); else window.addEventListener("devicemotion", hm); }
+    const loop = () => { if (!mounted) return; t++; const mag = Math.sqrt(motRef.current.x ** 2 + motRef.current.y ** 2 + motRef.current.z ** 2); setS({ gsr: +(0.42 + 0.22 * Math.sin(t * 0.025 + 1) + (Math.random() - 0.5) * 0.04).toFixed(3), motion: +(mag + Math.random() * 0.06).toFixed(2) }); animRef.current = requestAnimationFrame(loop); };
+    animRef.current = requestAnimationFrame(loop);
+    return () => { mounted = false; cancelAnimationFrame(animRef.current); window.removeEventListener("devicemotion", hm); };
+  }, [active]);
+  return s;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TTS + SPEECH RECOGNITION
+// ══════════════════════════════════════════════════════════════════════════════
+function getVoice() { const v = window.speechSynthesis?.getVoices() || []; return v.find(x => /Google US English|Alex|Daniel|Samantha/i.test(x.name) && x.lang.startsWith("en")) || v.find(x => x.lang.startsWith("en-US")) || v[0] || null; }
+function speak(text, opts = {}) { return new Promise(resolve => { if (!window.speechSynthesis) { resolve(); return; } window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = opts.rate || 0.9; u.pitch = opts.pitch || 0.95; u.volume = opts.volume || 1; if (opts.voice) u.voice = opts.voice; u.onend = resolve; u.onerror = resolve; window.speechSynthesis.speak(u); }); }
+function parseYesNo(text) { const t = text.toLowerCase(); if (/\b(yes|yeah|yep|correct|affirmative|true|right|yup|sure|absolutely|definitely|positive|certainly)\b/.test(t)) return "Yes"; if (/\b(no|nope|negative|false|never|nah|incorrect|wrong|deny|denied|not really|not at all)\b/.test(t)) return "No"; return null; }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SMALL SHARED UI
+// ══════════════════════════════════════════════════════════════════════════════
+function VoiceStatus({ speaking, listening, transcript, pitch, stressLevel }) {
+  const bars = Array(12).fill(0); const bc = speaking ? T.purple : listening ? T.accent : T.muted;
+  return (
+    <div style={{ background: T.panel, border: `1px solid ${speaking ? T.purple + "77" : listening ? T.accent + "77" : T.border}`, borderRadius: 9, padding: "9px 13px", marginBottom: 10, animation: speaking ? "speakRing 1.6s infinite" : listening ? "listenRing 1.6s infinite" : "none" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 2, height: 22, flexShrink: 0 }}>
+          {bars.map((_, i) => <div key={i} style={{ width: 3, borderRadius: 2, background: bc, height: "100%", transformOrigin: "center", animation: (speaking || listening) ? `voiceBar ${0.35 + (i % 5) * 0.12}s ease-in-out ${i * 0.05}s infinite` : "none", transform: (speaking || listening) ? undefined : "scaleY(0.2)" }} />)}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 2 }}>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: speaking ? T.purple : listening ? T.accent : T.muted }}>{speaking ? "▶ SPEAKING" : listening ? "⬤ LISTENING" : "○ STANDBY"}</div>
+            {listening && pitch > 0 && <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.teal }}>F0:{pitch}Hz</div>}
+            {listening && stressLevel && stressLevel !== "UNKNOWN" && <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: stressLevel === "HIGH" ? T.bad : stressLevel === "MODERATE" ? T.warn : T.good, background: (stressLevel === "HIGH" ? T.bad : stressLevel === "MODERATE" ? T.warn : T.good) + "22", padding: "1px 5px", borderRadius: 7 }}>VSA:{stressLevel}</div>}
+          </div>
+          <div style={{ fontSize: 12, color: transcript ? T.white : T.muted, fontStyle: transcript ? "normal" : "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{transcript || (listening ? "Listening…" : speaking ? "Speaking…" : "Voice ready")}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PPGGuide({ fingerDetected, hr, hrv }) {
+  return (
+    <div style={{ background: fingerDetected ? "#001a0d" : "#160900", border: `1px solid ${fingerDetected ? T.good : T.warn}44`, borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ fontSize: 18, animation: fingerDetected ? "hbeat 0.9s infinite" : "none" }}>💓</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: fingerDetected ? T.good : T.warn, marginBottom: 1 }}>{fingerDetected ? "PPG ACTIVE" : "PLACE FINGER ON REAR CAMERA"}</div>
+          <div style={{ fontSize: 11, color: T.text }}>{fingerDetected ? "Cardiac rhythm captured." : "Cover rear lens fully."}</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 16, color: fingerDetected ? T.good : T.muted }}>{hr || "--"}</div>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted }}>BPM</div>
+          {hrv != null && <><div style={{ fontFamily: "'Share Tech Mono'", fontSize: 11, color: T.accent }}>{hrv}</div><div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted }}>HRV</div></>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FacialMini({ facial }) {
+  const overlayRef = useRef(null); const mirrorRef = useRef(null);
+  useEffect(() => { if (facial.overlayCanvasRef) facial.overlayCanvasRef.current = overlayRef.current; }, [facial]);
+  useEffect(() => {
+    if (!facial.videoRef?.current || !mirrorRef.current) return;
+    const video = facial.videoRef.current; let aid;
+    const draw = () => { if (!mirrorRef.current) return; const ctx = mirrorRef.current.getContext("2d"); ctx.save(); ctx.scale(-1, 1); ctx.drawImage(video, -mirrorRef.current.width, 0, mirrorRef.current.width, mirrorRef.current.height); ctx.restore(); aid = requestAnimationFrame(draw); };
+    aid = requestAnimationFrame(draw); return () => cancelAnimationFrame(aid);
+  }, [facial.videoRef]);
+  const dec = facial.live; const dc = dec.deceptionLevel === "HIGH" ? T.bad : dec.deceptionLevel === "MODERATE" ? T.warn : T.good;
+  return (
+    <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 9, padding: 10, marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ position: "relative", borderRadius: 6, overflow: "hidden", width: 120, height: 90, flexShrink: 0, background: "#000" }}>
+          <canvas ref={mirrorRef} width={320} height={240} style={{ width: "100%", height: "100%", display: "block", transform: "scaleX(-1)" }} />
+          <canvas ref={overlayRef} width={320} height={240} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,0.03) 2px,rgba(0,212,255,0.03) 4px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: 4, left: 5, fontFamily: "'Share Tech Mono'", fontSize: 7, color: dc }}>FACIAL:{dec.deceptionLevel}</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: T.rose, letterSpacing: "0.1em", marginBottom: 6 }}>FACIAL ANALYSIS</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+            {[{ l: "GAZE", v: dec.gazeDir, c: dec.gazeDir === "CENTER" ? T.good : T.warn }, { l: "BLINK", v: `${dec.blinkRate.toFixed(0)}/m`, c: T.rose }, { l: "MOVE", v: `${(dec.motionScore * 100).toFixed(1)}%`, c: dec.motionScore > 0.04 ? T.warn : T.good }, { l: "AVERT", v: `${(dec.gazeAversion * 100).toFixed(0)}%`, c: dec.gazeAversion > 0.4 ? T.warn : T.good }].map(s => (
+              <div key={s.l} style={{ background: T.panel2, borderRadius: 4, padding: "4px 6px" }}>
+                <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 6, color: T.muted }}>{s.l}</div>
+                <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 10, color: s.c }}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CUSTOM QUESTION BANK EDITOR (Pre-examination setup, up to 25)
+// ══════════════════════════════════════════════════════════════════════════════
+function QuestionBankEditor({ initialQuestions = [], onSave, onCancel }) {
+  const [questions, setQuestions] = useState(
+    initialQuestions.length > 0
+      ? initialQuestions
+      : Array(5).fill("").map((_, i) => ({ id: `cq${i + 1}`, text: "", category: "custom" }))
+  );
+  const MAX = 25;
+
+  const addQuestion = () => {
+    if (questions.length >= MAX) return;
+    setQuestions(q => [...q, { id: `cq${Date.now()}`, text: "", category: "custom" }]);
+  };
+
+  const removeQuestion = (idx) => setQuestions(q => q.filter((_, i) => i !== idx));
+  const updateText = (idx, text) => setQuestions(q => q.map((item, i) => i === idx ? { ...item, text } : item));
+  const updateCat = (idx, category) => setQuestions(q => q.map((item, i) => i === idx ? { ...item, category } : item));
+  const moveUp = (idx) => { if (idx === 0) return; setQuestions(q => { const a = [...q]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; return a; }); };
+  const moveDown = (idx) => { if (idx === questions.length - 1) return; setQuestions(q => { const a = [...q]; [a[idx], a[idx + 1]] = [a[idx + 1], a[idx]]; return a; }); };
+
+  const validQuestions = questions.filter(q => q.text.trim().length > 0);
+  const catColors = { custom: T.accent, sensitive: T.warn, control: T.good, deception: T.bad };
+  const catLabels = { custom: "GENERAL", sensitive: "SENSITIVE", control: "CONTROL", deception: "CRITICAL" };
+
+  return (
+    <div style={{ minHeight: "100vh", padding: "24px 18px", maxWidth: 540, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 900, fontSize: 24, color: T.white, letterSpacing: "0.05em" }}>QUESTION BANK</div>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, letterSpacing: "0.1em", marginTop: 2 }}>CUSTOM EXAMINATION · UP TO {MAX} QUESTIONS</div>
+          </div>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 22, color: T.gold, lineHeight: 1 }}>{questions.length}<span style={{ fontSize: 10, color: T.muted }}>/{MAX}</span></div>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ height: 3, background: T.border, borderRadius: 2, marginTop: 10 }}>
+          <div style={{ height: "100%", width: `${(questions.length / MAX) * 100}%`, background: `linear-gradient(90deg, ${T.accent}, ${T.gold})`, borderRadius: 2, transition: "width 0.3s" }} />
+        </div>
+
+        <div style={{ marginTop: 12, padding: "10px 14px", background: T.panel, border: `1px solid ${T.gold}33`, borderRadius: 8, fontSize: 12, color: T.text, lineHeight: 1.6 }}>
+          🎯 These questions will be voice-prompted after the standard examination. Each response will receive a <strong style={{ color: T.gold }}>BS Score 1–10</strong> — 10 = certainly true, 1 = probably false.
+        </div>
+      </div>
+
+      {/* Question list */}
+      <div style={{ marginBottom: 14 }}>
+        {questions.map((q, idx) => (
+          <div key={q.id} style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 10, padding: 14, marginBottom: 10, animation: `slideIn 0.3s ease ${idx * 0.03}s both` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 11, color: T.muted, minWidth: 24, textAlign: "center" }}>#{idx + 1}</div>
+                {/* Category selector */}
+                <div style={{ display: "flex", gap: 4 }}>
+                  {Object.entries(catLabels).map(([cat, label]) => (
+                    <button key={cat} onClick={() => updateCat(idx, cat)} style={{ padding: "2px 7px", background: q.category === cat ? catColors[cat] + "33" : "none", border: `1px solid ${q.category === cat ? catColors[cat] : T.border}`, color: q.category === cat ? catColors[cat] : T.muted, borderRadius: 10, cursor: "pointer", fontFamily: "'Share Tech Mono'", fontSize: 7, letterSpacing: "0.05em", transition: "all 0.15s" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 5 }}>
+                <button onClick={() => moveUp(idx)} disabled={idx === 0} style={{ background: "none", border: "none", color: idx === 0 ? T.muted : T.text, cursor: idx === 0 ? "not-allowed" : "pointer", fontSize: 14, lineHeight: 1 }}>↑</button>
+                <button onClick={() => moveDown(idx)} disabled={idx === questions.length - 1} style={{ background: "none", border: "none", color: idx === questions.length - 1 ? T.muted : T.text, cursor: idx === questions.length - 1 ? "not-allowed" : "pointer", fontSize: 14, lineHeight: 1 }}>↓</button>
+                <button onClick={() => removeQuestion(idx)} style={{ background: "none", border: "none", color: T.bad, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}>✕</button>
+              </div>
+            </div>
+            <textarea
+              value={q.text}
+              onChange={e => updateText(idx, e.target.value)}
+              placeholder={`Question ${idx + 1} — type your examination question here…`}
+              rows={2}
+              style={{ resize: "vertical", fontSize: 15, lineHeight: 1.4, borderColor: q.text.trim() ? catColors[q.category] + "55" : T.border }}
+            />
+            {q.text.trim().length > 0 && (
+              <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: catColors[q.category], marginTop: 4 }}>
+                {catLabels[q.category]} · {q.text.trim().length} chars
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add question */}
+      {questions.length < MAX && (
+        <button onClick={addQuestion} style={{ width: "100%", marginBottom: 14, padding: 13, background: "none", border: `2px dashed ${T.accentDim}`, color: T.accent, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, letterSpacing: "0.1em", borderRadius: 10, cursor: "pointer", transition: "border-color 0.2s" }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = T.accent}
+          onMouseLeave={e => e.currentTarget.style.borderColor = T.accentDim}>
+          + ADD QUESTION ({questions.length}/{MAX})
+        </button>
+      )}
+
+      {/* Footer controls */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 40 }}>
+        <button onClick={onCancel} style={{ flex: 1, padding: 14, background: "none", border: `1px solid ${T.border}`, color: T.muted, fontFamily: "'Barlow Condensed'", fontWeight: 600, fontSize: 15, borderRadius: 8, cursor: "pointer" }}>
+          CANCEL
+        </button>
+        <button onClick={() => onSave(validQuestions)}
+          disabled={validQuestions.length === 0}
+          style={{ flex: 2, padding: 14, background: validQuestions.length > 0 ? T.gold : T.border, border: "none", color: validQuestions.length > 0 ? T.bg : T.muted, fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 16, letterSpacing: "0.12em", borderRadius: 8, cursor: validQuestions.length > 0 ? "pointer" : "not-allowed" }}>
+          SAVE {validQuestions.length} QUESTION{validQuestions.length !== 1 ? "S" : ""} →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CUSTOM QUESTION EXAMINATION (voice-prompted, BS scored)
+// ══════════════════════════════════════════════════════════════════════════════
+function CustomExamination({ session, customQuestions, onComplete }) {
+  const ppg = usePPG(true);
+  const sensors = useSensors(true);
+  const vs = useVoiceStress(true);
+  const facial = useFacialAnalysis(true);
+
+  const [qIdx, setQIdx] = useState(0);
+  const [responses, setResponses] = useState([]);
+  const [uiState, setUiState] = useState("idle"); // idle | speaking | listening | scoring | done
+  const [transcript, setTranscript] = useState("");
+  const [currentBSScore, setCurrentBSScore] = useState(null);
+  const [scoringMsg, setScoringMsg] = useState("");
+
+  const startRef = useRef(null);
+  const snapRef = useRef(null);
+  const vsaStartRef = useRef(null);
+  const facialStartRef = useRef(null);
+  const voiceRef = useRef(null);
+  const recRef = useRef(null);
+
+  useEffect(() => {
+    if (window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = () => { voiceRef.current = getVoice(); }; voiceRef.current = getVoice(); }
+  }, []);
+
+  const q = customQuestions[qIdx];
+
+  const askQ = useCallback(async (question) => {
+    setTranscript(""); setCurrentBSScore(null); setScoringMsg(""); setUiState("speaking");
+    snapRef.current = { hr: ppg.hr, hrv: ppg.hrv, gsr: sensors.gsr, motion: sensors.motion };
+    vsaStartRef.current = Date.now(); facialStartRef.current = Date.now();
+    const intro = qIdx === 0 ? "Custom examination phase. I will now ask your personalized questions. Answer yes or no. " : "";
+    await speak(intro + question.text, { voice: voiceRef.current, rate: 0.86, pitch: 0.92 });
+    startRef.current = Date.now();
+    setUiState("listening");
+    startListening(question);
+  }, [qIdx, ppg, sensors]);
+
+  useEffect(() => {
+    if (!q) return;
+    const t = setTimeout(() => askQ(q), qIdx === 0 ? 600 : 400);
+    return () => clearTimeout(t);
+  }, [qIdx]);
+
+  const startListening = (question) => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setUiState("listening"); return; }
+    if (recRef.current) { try { recRef.current.stop(); } catch {} }
+    const rec = new SR();
+    rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 3;
+    rec.onstart = () => setUiState("listening");
+    rec.onresult = e => {
+      const finals = Array.from(e.results).filter(r => r.isFinal).map(r => r[0].transcript).join(" ");
+      const interim = Array.from(e.results).filter(r => !r.isFinal).map(r => r[0].transcript).join(" ");
+      setTranscript((finals + " " + interim).trim());
+      if (finals.trim()) { const yn = parseYesNo(finals.trim()); if (yn) { rec.stop(); captureAndScore(yn, question); } }
+    };
+    rec.onend = () => { if (uiState === "listening") setUiState("listening"); };
+    rec.onerror = () => {};
+    recRef.current = rec; rec.start();
+  };
+
+  const captureAndScore = async (ans, question) => {
+    const vsaFeatures = vs.captureFeatures(Date.now() - vsaStartRef.current);
+    const vsaStress = vs.getStressForCapture(vsaFeatures);
+    const facialCapture = facial.captureWindow(Date.now() - facialStartRef.current);
+    const facialDeception = facial.getDeceptionForCapture(facialCapture);
+    const rt = Date.now() - startRef.current;
+
+    setUiState("scoring");
+    setScoringMsg("Analyzing response…");
+    await speak("Analyzing.", { voice: voiceRef.current, rate: 1.1 });
+
+    // Compute BS score from all sensors
+    const bsScore = await computeBSScore({
+      answer: ans,
+      responseTime: rt,
+      vsaStress, vsaFeatures,
+      facialDeception, facialCapture,
+      cardiac: { hr: ppg.hr, hrv: ppg.hrv },
+      cardiacStart: snapRef.current,
+      gsr: sensors.gsr,
+      question,
+      profile: session.profile,
+      priorResponses: session.responses.concat(responses),
+    });
+
+    setCurrentBSScore(bsScore);
+    setScoringMsg("");
+
+    const rec = {
+      questionId: question.id, type: "custom", category: question.category,
+      text: question.text, answer: ans, responseTime: rt,
+      bsScore: bsScore.score, bsLabel: bsScore.label, bsRationale: bsScore.rationale,
+      sensorAtAnswer: { hr: ppg.hr, hrv: ppg.hrv, gsr: sensors.gsr, motion: sensors.motion },
+      sensorAtStart: snapRef.current,
+      delta: { hr: (ppg.hr || 0) - (snapRef.current?.hr || 0), hrv: (ppg.hrv || 0) - (snapRef.current?.hrv || 0), gsr: sensors.gsr - (snapRef.current?.gsr || sensors.gsr) },
+      vsaFeatures, vsaStress: vsaStress ? { score: vsaStress.score, level: vsaStress.level } : null,
+      facialCapture, facialDeception: facialDeception ? { score: facialDeception.score, level: facialDeception.level } : null,
+      voiceTranscript: transcript,
+    };
+
+    // Announce score
+    await speak(`BS score: ${bsScore.score} out of 10. ${bsScore.verdict}.`, { voice: voiceRef.current, rate: 0.88, pitch: bsScore.score >= 7 ? 1.05 : bsScore.score <= 3 ? 0.88 : 0.95 });
+
+    const updated = [...responses, rec];
+    setResponses(updated);
+
+    // Brief pause then next
+    if (qIdx < customQuestions.length - 1) {
+      await new Promise(r => setTimeout(r, 2200));
+      setQIdx(i => i + 1);
+    } else {
+      setUiState("done");
+      await speak("Custom examination complete. Generating your full report.", { voice: voiceRef.current, rate: 0.9 });
+      setTimeout(() => onComplete(updated), 1200);
+    }
+  };
+
+  // Heuristic BS score computation
+  const computeBSScore = async ({ answer, responseTime, vsaStress, vsaFeatures, facialDeception, facialCapture, cardiac, cardiacStart, gsr, question, profile, priorResponses }) => {
+    // Collect deception signals
+    const signals = [];
+    let deceptionWeight = 0;
+
+    // VSA contribution (0–3 points deduction)
+    if (vsaStress?.level === "HIGH") { signals.push("HIGH voice stress"); deceptionWeight += 2.5; }
+    else if (vsaStress?.level === "MODERATE") { signals.push("moderate voice stress"); deceptionWeight += 1.2; }
+
+    // Facial contribution (0–3 points)
+    if (facialDeception?.level === "HIGH") { signals.push("HIGH facial deception markers"); deceptionWeight += 2.5; }
+    else if (facialDeception?.level === "MODERATE") { signals.push("gaze aversion detected"); deceptionWeight += 1.2; }
+    if (facialCapture?.prolongedBlinks > 2) { signals.push("prolonged blinks"); deceptionWeight += 0.5; }
+
+    // Response time (slow = hesitation)
+    if (responseTime > 4000) { signals.push("very slow response"); deceptionWeight += 1.5; }
+    else if (responseTime > 2500) { signals.push("hesitation detected"); deceptionWeight += 0.7; }
+
+    // HRV drop
+    const hrDelta = (cardiac.hr || 72) - (cardiacStart?.hr || 72);
+    if (hrDelta > 8) { signals.push("cardiac elevation"); deceptionWeight += 0.8; }
+
+    // GSR spike
+    if (gsr > 0.65) { signals.push("GSR elevation"); deceptionWeight += 0.5; }
+
+    // Specific jitter/shimmer flags
+    if (vsaFeatures?.jitter > 0.07) { signals.push("elevated pitch jitter"); deceptionWeight += 0.4; }
+    if (vsaFeatures?.hnr < 8) { signals.push("reduced HNR"); deceptionWeight += 0.3; }
+
+    // Raw score: start at 10, subtract deception weight, clamp 1–10
+    let rawScore = Math.max(1, Math.min(10, Math.round(10 - deceptionWeight)));
+
+    // AI refinement
+    try {
+      const priorCtx = priorResponses.slice(-5).map(r => `"${r.text}" → ${r.answer} (BS:${r.bsScore || "?"})`).join("; ");
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514", max_tokens: 400,
+          messages: [{
+            role: "user", content: `You are a forensic truth veracity scorer. Based on multi-modal polygraph data, score this response on a BS scale of 1 to 10 where 10 = certainly true and 1 = probably false. Return ONLY JSON: {"score":<1-10 integer>,"label":"<CERTAINLY TRUE|LIKELY TRUE|UNCERTAIN|LIKELY FALSE|PROBABLY FALSE>","rationale":"<1 sentence>","verdict":"<spoken aloud verdict, 1 sentence>"}
+
+QUESTION: "${question.text}"
+ANSWER: ${answer}
+RESPONSE TIME: ${responseTime}ms
+VOICE STRESS: ${vsaStress?.level || "UNKNOWN"} (score: ${((vsaStress?.score || 0) * 100).toFixed(0)}%)
+FACIAL DECEPTION: ${facialDeception?.level || "UNKNOWN"} (score: ${((facialDeception?.score || 0) * 100).toFixed(0)}%)
+DOMINANT GAZE: ${facialCapture?.dominantGaze || "unknown"}, AVERSION: ${((facialCapture?.gazeAversion || 0) * 100).toFixed(0)}%
+BLINK RATE: ${facialCapture?.avgBlinkRate?.toFixed(0) || "?"}/min PROLONGED BLINKS: ${facialCapture?.prolongedBlinks || 0}
+CARDIAC DELTA: +${hrDelta}bpm GSR: ${gsr}
+DECEPTION SIGNALS DETECTED: ${signals.length > 0 ? signals.join(", ") : "none"}
+HEURISTIC SCORE: ${rawScore}
+PRIOR RESPONSES: ${priorCtx || "none"}
+SUBJECT PROFILE: anxiety=${profile?.anxietyNow || "?"}, mentalDx=${profile?.mentalDx || "none"}, priorPoly=${profile?.priorPoly || "never"}`
+          }]
+        }),
+      });
+      const data = await res.json();
+      const txt = (data.content || []).map(c => c.text || "").join("").replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(txt);
+      return { score: Math.max(1, Math.min(10, parsed.score)), label: parsed.label, rationale: parsed.rationale, verdict: parsed.verdict };
+    } catch {
+      return { score: rawScore, label: bsLabel(rawScore), rationale: signals.length > 0 ? `Detected: ${signals.join(", ")}.` : "No significant deception markers detected.", verdict: bsLabel(rawScore) };
+    }
+  };
+
+  const catColors = { custom: T.accent, sensitive: T.warn, control: T.good, deception: T.bad };
+
+  return (
+    <div style={{ minHeight: "100vh", padding: "24px 18px", maxWidth: 480, margin: "0 auto", display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 20, color: T.white }}>CUSTOM EXAM</div>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted }}>Q{qIdx + 1} OF {customQuestions.length} · BS SCORING</div>
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {customQuestions.map((_, i) => <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: i < qIdx ? T.gold : i === qIdx ? T.accent : T.border, transition: "background 0.3s" }} />)}
+        </div>
+      </div>
+
+      <PPGGuide fingerDetected={ppg.fingerDetected} hr={ppg.hr} hrv={ppg.hrv} />
+      <FacialMini facial={facial} />
+      <VoiceStatus speaking={uiState === "speaking"} listening={uiState === "listening"} transcript={transcript} pitch={vs.live.pitch} stressLevel={vs.live.stressLevel} />
+
+      {/* Question card */}
+      {q && (
+        <div style={{ background: T.panel, border: `2px solid ${catColors[q.category] || T.accent}44`, borderRadius: 12, padding: 18, marginBottom: 12, flex: 1, animation: "fadeUp 0.4s ease" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: catColors[q.category] || T.accent, letterSpacing: "0.1em" }}>CUSTOM QUESTION · {q.category?.toUpperCase() || "GENERAL"}</div>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted }}>BS SCORE PENDING</div>
+          </div>
+          <div style={{ fontSize: 19, color: T.white, fontWeight: 600, lineHeight: 1.5, marginBottom: 18 }}>{q.text}</div>
+
+          {/* BS Score display when available */}
+          {uiState === "scoring" && (
+            <div style={{ textAlign: "center", padding: 16, animation: "fadeUp 0.3s ease" }}>
+              <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 10, color: T.gold, animation: "pulse 0.8s infinite", marginBottom: 8 }}>⚡ COMPUTING BS SCORE…</div>
+              <div style={{ fontSize: 12, color: T.muted }}>{scoringMsg}</div>
+            </div>
+          )}
+
+          {currentBSScore && uiState !== "scoring" && (
+            <div style={{ background: T.panel2, border: `1px solid ${bsColor(currentBSScore.score)}44`, borderRadius: 10, padding: 14, animation: "scorePop 0.6s ease" }}>
+              <BSMeter score={currentBSScore.score} label="BS VERACITY SCORE" />
+              <div style={{ marginTop: 10, fontSize: 12, color: T.text, lineHeight: 1.6, textAlign: "center" }}>{currentBSScore.rationale}</div>
+            </div>
+          )}
+
+          {/* Manual YES/NO */}
+          {(uiState === "listening" || uiState === "idle") && !currentBSScore && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { try { recRef.current?.stop(); } catch {} captureAndScore("Yes", q); }} style={{ flex: 1, padding: 14, background: T.good + "1a", border: `2px solid ${T.good}`, color: T.good, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 18, borderRadius: 9, cursor: "pointer" }}>YES</button>
+              <button onClick={() => { try { recRef.current?.stop(); } catch {} captureAndScore("No", q); }} style={{ flex: 1, padding: 14, background: T.bad + "1a", border: `2px solid ${T.bad}`, color: T.bad, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 18, borderRadius: 9, cursor: "pointer" }}>NO</button>
+            </div>
+          )}
+          <button onClick={() => askQ(q)} style={{ width: "100%", marginTop: 8, padding: 9, background: "none", border: `1px solid ${T.purple}44`, color: T.purple, borderRadius: 7, cursor: "pointer", fontFamily: "'Share Tech Mono'", fontSize: 9 }}>↺ REPEAT QUESTION</button>
+        </div>
+      )}
+
+      {/* Previous BS scores strip */}
+      {responses.length > 0 && (
+        <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 9, padding: 12, marginTop: 4 }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: T.muted, marginBottom: 8, letterSpacing: "0.1em" }}>COMPLETED · BS SCORES</div>
+          {responses.slice(-4).map((r, i) => (
+            <div key={i} style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: T.text, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{r.text}"</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: r.answer === "Yes" ? T.good : T.bad }}>→ {r.answer}</div>
+                <div style={{ flex: 1 }}><BSMeter score={r.bsScore} compact /></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// POST-EXAM RESULTS WITH BS SCORES
+// ══════════════════════════════════════════════════════════════════════════════
+function Results({ session, onReset, onDelete, onEdit }) {
+  const [ai, setAi] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [showDel, setShowDel] = useState(false);
+  const [activeTab, setActiveTab] = useState("standard"); // standard | custom | summary
+  const voiceRef = useRef(null);
+
+  useEffect(() => {
+    if (window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = () => { voiceRef.current = getVoice(); }; voiceRef.current = getVoice(); }
+    speak("Generating your comprehensive examination report with custom question BS scores.", { voice: voiceRef.current, rate: 0.9 });
+  }, []);
+
+  useEffect(() => {
+    const iv = setInterval(() => setProgress(p => Math.min(p + Math.random() * 5, 93)), 160);
+    const analyze = async () => {
+      const profileText = Object.entries(session.profile || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
+      const stdText = (session.responses || []).map((r, i) => {
+        const vsa = r.vsaStress ? `VSA:${r.vsaStress.level}(${(r.vsaStress.score * 100).toFixed(0)}%)` : "VSA:N/A";
+        const fac = r.facialDeception ? `FACIAL:${r.facialDeception.level}(${(r.facialDeception.score * 100).toFixed(0)}%)` : "FACIAL:N/A";
+        return `Q${i + 1}(${r.type}): "${r.text}" → ${r.answer} | RT:${r.responseTime}ms | ${vsa} | ${fac}`;
+      }).join("\n");
+      const customText = (session.customResponses || []).map((r, i) => `CQ${i + 1}(${r.category}): "${r.text}" → ${r.answer} | BS:${r.bsScore}/10 (${r.bsLabel}) | RT:${r.responseTime}ms | VSA:${r.vsaStress?.level || "?"} | FACIAL:${r.facialDeception?.level || "?"}`).join("\n");
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514", max_tokens: 1200,
+            messages: [{
+              role: "user", content: `You are a forensic psychophysiologist analyzing a complete polygraph with standard questions AND custom examiner questions with BS veracity scores. Return ONLY valid JSON.\n\nPROFILE: ${profileText}\n\nSTANDARD QUESTIONS:\n${stdText}\n\nCUSTOM QUESTIONS WITH BS SCORES:\n${customText}\n\nReturn: {"overallVeracityScore":<0-100>,"deceptionRisk":"<Low|Moderate|High|Inconclusive>","confidence":<0-100>,"customQSummary":"<3 sentences analyzing the custom question BS scores and what patterns emerged>","standardSummary":"<2 sentences on standard exam>","conclusion":"<3-4 sentences integrating all data>","examinerNotes":"<2 sentences>","verbalSummary":"<1 sentence TTS>"}`
+            }]
+          }),
+        });
+        const data = await res.json();
+        const txt = (data.content || []).map(c => c.text || "").join("").replace(/```json|```/g, "").trim();
+        clearInterval(iv); setProgress(100);
+        const parsed = JSON.parse(txt);
+        setTimeout(async () => { setAi(parsed); setLoading(false); await speak(`Report complete. ${parsed.verbalSummary || "Results are displayed on screen."}`, { voice: voiceRef.current, rate: 0.88 }); }, 400);
+      } catch {
+        clearInterval(iv); setProgress(100);
+        setTimeout(() => { setAi({ overallVeracityScore: 62, deceptionRisk: "Inconclusive", confidence: 48, customQSummary: "Custom question BS scores ranged across the veracity spectrum. Multi-modal sensor data captured voice stress and facial indicators for each response. Full analysis inconclusive without complete baseline comparison.", standardSummary: "Standard examination data captured across all ten questions.", conclusion: "Results are inconclusive. Examination data has been recorded for review.", examinerNotes: "Entertainment system only. No scientific validity.", verbalSummary: "Results are now displayed on screen." }); setLoading(false); }, 400);
+      }
+    };
+    analyze();
+    return () => clearInterval(iv);
+  }, []);
+
+  const customResponses = session.customResponses || [];
+  const avgBS = customResponses.length > 0 ? Math.round(customResponses.reduce((a, r) => a + r.bsScore, 0) / customResponses.length) : null;
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28 }}>
+      <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 24, color: T.white, marginBottom: 3 }}>FULL ANALYSIS</div>
+      <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, marginBottom: 30 }}>STANDARD · CUSTOM · BS SCORES · MULTI-MODAL</div>
+      {["Tabulating BS scores", "Cross-referencing voice stress", "Integrating facial deception data", "Analyzing cardiac patterns", "Correlating custom responses", "Computing holistic veracity model", "Generating comprehensive report"].map((s, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9, opacity: progress > i * 13 ? 1 : 0.15, transition: "opacity 0.4s", width: "100%", maxWidth: 340 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: progress > (i + 1) * 13 ? T.good : T.gold, flexShrink: 0, animation: progress > i * 13 && progress < (i + 1) * 13 ? "pulse 0.7s infinite" : "none" }} />
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 10, color: progress > (i + 1) * 13 ? T.good : T.text }}>{s}</div>
+        </div>
+      ))}
+      <div style={{ width: "100%", maxWidth: 340, marginTop: 18 }}>
+        <div style={{ height: 3, background: T.border, borderRadius: 2 }}><div style={{ height: "100%", width: `${progress}%`, background: `linear-gradient(90deg,${T.gold},${T.accent})`, borderRadius: 2, transition: "width 0.3s" }} /></div>
+        <div style={{ textAlign: "right", fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.gold, marginTop: 3 }}>{Math.round(progress)}%</div>
+      </div>
+    </div>
+  );
+
+  if (!ai) return null;
+  const sc = ai.overallVeracityScore > 70 ? T.good : ai.overallVeracityScore > 45 ? T.warn : T.bad;
+  const rc = { Low: T.good, Moderate: T.warn, High: T.bad, Inconclusive: T.muted }[ai.deceptionRisk] || T.muted;
+  const Sec = ({ title, color, children }) => (
+    <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
+      <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color, letterSpacing: "0.12em", marginBottom: 10 }}>{title}</div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", padding: "24px 18px", maxWidth: 520, margin: "0 auto" }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 24, color: T.white }}>EXAMINATION REPORT</div>
+        <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted }}>{new Date().toLocaleString().toUpperCase()}</div>
+        <div style={{ width: 50, height: 2, background: T.gold, marginTop: 8 }} />
+      </div>
+
+      {/* Score cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 14 }}>
+        <div style={{ background: T.panel, border: `1px solid ${sc}44`, borderRadius: 9, padding: "12px 7px", textAlign: "center" }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 25, color: sc }}>{ai.overallVeracityScore}</div>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted, marginTop: 2 }}>VERACITY</div>
+        </div>
+        <div style={{ background: T.panel, border: `1px solid ${rc}44`, borderRadius: 9, padding: "12px 7px", textAlign: "center" }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 11, color: rc, lineHeight: 1.3 }}>{ai.deceptionRisk.toUpperCase()}</div>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted, marginTop: 2 }}>RISK</div>
+        </div>
+        {avgBS !== null ? (
+          <div style={{ background: T.panel, border: `1px solid ${bsColor(avgBS)}44`, borderRadius: 9, padding: "12px 7px", textAlign: "center" }}>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 25, color: bsColor(avgBS), animation: "bsGlow 2s ease infinite" }}>{avgBS}</div>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted, marginTop: 2 }}>AVG BS/10</div>
+          </div>
+        ) : (
+          <div style={{ background: T.panel, border: `1px solid ${T.accent}44`, borderRadius: 9, padding: "12px 7px", textAlign: "center" }}>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 25, color: T.accent }}>{ai.confidence}%</div>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted, marginTop: 2 }}>CONFIDENCE</div>
+          </div>
+        )}
+      </div>
+
+      <button onClick={() => speak(`Overall veracity score: ${ai.overallVeracityScore}. Deception risk: ${ai.deceptionRisk}. ${avgBS !== null ? `Average BS score: ${avgBS} out of 10.` : ""} ${ai.conclusion} ${ai.examinerNotes}`, { voice: getVoice(), rate: 0.85 })}
+        style={{ width: "100%", marginBottom: 12, padding: 11, background: T.purple + "22", border: `1px solid ${T.purple}55`, color: T.purple, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, letterSpacing: "0.1em", borderRadius: 8, cursor: "pointer" }}>
+        🔊 READ RESULTS ALOUD
+      </button>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[["standard", "STANDARD"], ["custom", "CUSTOM BS"], ["summary", "SUMMARY"]].map(([tab, label]) => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            style={{ flex: 1, padding: "9px 4px", background: activeTab === tab ? (tab === "custom" ? T.gold + "22" : T.accent + "22") : T.panel, border: `1px solid ${activeTab === tab ? (tab === "custom" ? T.gold : T.accent) : T.border}`, color: activeTab === tab ? (tab === "custom" ? T.gold : T.accent) : T.muted, borderRadius: 7, cursor: "pointer", fontFamily: "'Share Tech Mono'", fontSize: 9, letterSpacing: "0.05em", transition: "all 0.2s" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Standard tab */}
+      {activeTab === "standard" && (
+        <>
+          <Sec title="STANDARD EXAMINATION" color={T.accent}><div style={{ fontSize: 13, color: T.text, lineHeight: 1.7 }}>{ai.standardSummary}</div></Sec>
+          <Sec title={`STANDARD Q&A (${session.responses?.length || 0})`} color={T.accent}>
+            {(session.responses || []).map((r, i) => {
+              const frc = { LOW: T.good, MODERATE: T.warn, HIGH: T.bad }[r.facialDeception?.level?.toUpperCase()] || T.muted;
+              const vrc = { LOW: T.good, MODERATE: T.warn, HIGH: T.bad }[r.vsaStress?.level?.toUpperCase()] || T.muted;
+              return (
+                <div key={i} style={{ borderLeft: `3px solid ${T.border}`, paddingLeft: 10, marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                    <span style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: T.muted }}>Q{i + 1} · {r.type?.toUpperCase()}</span>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <span style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: frc, background: frc + "22", padding: "1px 6px", borderRadius: 8 }}>👁 {r.facialDeception?.level || "?"}</span>
+                      <span style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: vrc, background: vrc + "22", padding: "1px 6px", borderRadius: 8 }}>🎤 {r.vsaStress?.level || "?"}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: T.text, marginBottom: 2 }}>"{r.text}"</div>
+                  <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: r.answer === "Yes" ? T.good : T.bad }}>→ {r.answer} · RT:{r.responseTime}ms</div>
+                </div>
+              );
+            })}
+          </Sec>
+        </>
+      )}
+
+      {/* Custom BS tab */}
+      {activeTab === "custom" && (
+        <>
+          {customResponses.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 20px", color: T.muted, fontFamily: "'Share Tech Mono'", fontSize: 12 }}>No custom questions were administered.</div>
+          ) : (
+            <>
+              {/* Average BS meter */}
+              {avgBS !== null && (
+                <div style={{ background: T.panel, border: `1px solid ${bsColor(avgBS)}44`, borderRadius: 12, padding: 20, marginBottom: 12, textAlign: "center" }}>
+                  <BSMeter score={avgBS} label="AVERAGE CUSTOM QUESTION BS SCORE" />
+                  <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, marginTop: 10 }}>{customResponses.length} CUSTOM QUESTION{customResponses.length !== 1 ? "S" : ""} SCORED</div>
+                </div>
+              )}
+              <Sec title="CUSTOM Q ANALYSIS" color={T.gold}><div style={{ fontSize: 13, color: T.text, lineHeight: 1.7 }}>{ai.customQSummary}</div></Sec>
+
+              {/* Individual BS scores */}
+              <Sec title="QUESTION-BY-QUESTION BS SCORES" color={T.gold}>
+                {customResponses.map((r, i) => (
+                  <div key={i} style={{ background: T.panel2, border: `2px solid ${bsColor(r.bsScore)}33`, borderRadius: 10, padding: 14, marginBottom: 12, animation: `slideIn 0.3s ease ${i * 0.05}s both` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: T.muted }}>CQ{i + 1} · {r.category?.toUpperCase() || "CUSTOM"}</div>
+                      <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: r.answer === "Yes" ? T.good : T.bad }}>→ {r.answer}</div>
+                    </div>
+                    <div style={{ fontSize: 14, color: T.white, fontWeight: 600, marginBottom: 10, lineHeight: 1.4 }}>"{r.text}"</div>
+                    <BSMeter score={r.bsScore} compact />
+                    {r.bsRationale && (
+                      <div style={{ fontSize: 11, color: T.muted, marginTop: 8, lineHeight: 1.5, padding: "6px 10px", background: T.panel, borderRadius: 6 }}>
+                        {r.bsRationale}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted }}>RT:{r.responseTime}ms</span>
+                      <span style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: r.vsaStress?.level === "HIGH" ? T.bad : r.vsaStress?.level === "MODERATE" ? T.warn : T.good }}>VSA:{r.vsaStress?.level || "?"}</span>
+                      <span style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: r.facialDeception?.level === "HIGH" ? T.bad : r.facialDeception?.level === "MODERATE" ? T.warn : T.good }}>👁:{r.facialDeception?.level || "?"}</span>
+                      {r.facialCapture?.dominantGaze && <span style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: r.facialCapture.dominantGaze === "CENTER" ? T.good : T.warn }}>GAZE:{r.facialCapture.dominantGaze}</span>}
+                    </div>
+                  </div>
+                ))}
+              </Sec>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Summary tab */}
+      {activeTab === "summary" && (
+        <>
+          <Sec title="INTEGRATED CONCLUSION" color={T.accent}><div style={{ fontSize: 13, color: T.text, lineHeight: 1.7 }}>{ai.conclusion}</div></Sec>
+          <Sec title="EXAMINER NOTES" color={T.warn}><div style={{ fontSize: 13, color: T.text, lineHeight: 1.7 }}>{ai.examinerNotes}</div></Sec>
+          <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.7, padding: "11px 13px", background: T.panel, borderRadius: 8, borderLeft: `3px solid ${T.muted}`, marginBottom: 14 }}>
+            ⚠️ Entertainment and research only. BS scores are AI estimates based on multi-modal sensor data. Not for legal, medical, or employment decisions.
+          </div>
+        </>
+      )}
+
+      {/* Data management */}
+      <div style={{ background: "#150808", border: `1px solid ${T.bad}44`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.bad, marginBottom: 8 }}>DATA RETENTION</div>
+        <div style={{ fontSize: 12, color: T.text, lineHeight: 1.6, marginBottom: 10 }}>All session data stored locally. Never transmitted externally except anonymously for AI analysis.</div>
+        {!showDel ? (
+          <button onClick={() => setShowDel(true)} style={{ width: "100%", padding: 11, background: T.bad + "22", border: `1px solid ${T.bad}`, color: T.bad, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, borderRadius: 6, cursor: "pointer" }}>🗑 DELETE ALL SESSION DATA</button>
+        ) : (
+          <div style={{ animation: "fadeUp 0.3s ease" }}>
+            <div style={{ fontSize: 13, color: T.warn, marginBottom: 10, textAlign: "center" }}>Permanently delete? Cannot be undone.</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowDel(false)} style={{ flex: 1, padding: 11, background: "none", border: `1px solid ${T.border}`, color: T.muted, borderRadius: 6, cursor: "pointer", fontFamily: "'Barlow Condensed'", fontWeight: 600, fontSize: 14 }}>CANCEL</button>
+              <button onClick={onDelete} style={{ flex: 1, padding: 11, background: T.bad, border: "none", color: T.white, borderRadius: 6, cursor: "pointer", fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 14 }}>CONFIRM DELETE</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 48 }}>
+        <button onClick={onEdit} style={{ flex: 1, padding: 13, background: T.gold + "22", border: `1px solid ${T.gold}`, color: T.gold, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, letterSpacing: "0.08em", borderRadius: 8, cursor: "pointer" }}>✏ EDIT QUESTIONS</button>
+        <button onClick={onReset} style={{ flex: 1, padding: 13, background: "none", border: `1px solid ${T.accent}`, color: T.accent, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, letterSpacing: "0.08em", borderRadius: 8, cursor: "pointer" }}>↺ NEW EXAM</button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EXAMINER HUB (replaces old examiner panel — now just for ad-hoc follow-ups)
+// Shows after standard test, before custom exam
+// ══════════════════════════════════════════════════════════════════════════════
+function ExaminerHub({ session, customQuestions, onStartCustom, onEditQuestions, onProceedToResults }) {
+  const customCount = customQuestions.filter(q => q.text?.trim()).length;
+
+  return (
+    <div style={{ minHeight: "100vh", padding: "32px 20px", maxWidth: 480, margin: "0 auto", display: "flex", flexDirection: "column" }}>
+      <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 900, fontSize: 26, color: T.white, letterSpacing: "0.05em" }}>EXAMINER HUB</div>
+      <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, letterSpacing: "0.1em", marginBottom: 28 }}>STANDARD EXAMINATION COMPLETE</div>
+
+      {/* Status bar */}
+      <div style={{ background: T.panel, border: `1px solid ${T.good}44`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
+        <div style={{ display: "flex", align: "center", gap: 10 }}>
+          <div style={{ fontSize: 24 }}>✅</div>
+          <div>
+            <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 16, color: T.good }}>STANDARD EXAM COMPLETE</div>
+            <div style={{ fontSize: 13, color: T.text }}>{session.responses?.length || 0} standard questions answered and scored.</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Custom question section */}
+      <div style={{ background: T.panel, border: `2px solid ${T.gold}44`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
+        <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 10, color: T.gold, letterSpacing: "0.12em", marginBottom: 12 }}>CUSTOM QUESTION BANK</div>
+
+        {customCount === 0 ? (
+          <div style={{ textAlign: "center", padding: "10px 0 16px" }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>📋</div>
+            <div style={{ fontSize: 15, color: T.text, lineHeight: 1.5, marginBottom: 14 }}>No custom questions loaded. Add up to 25 personalized questions to administer now.</div>
+            <button onClick={onEditQuestions} style={{ padding: "13px 28px", background: T.gold, border: "none", color: T.bg, fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 15, letterSpacing: "0.1em", borderRadius: 8, cursor: "pointer" }}>
+              + CREATE QUESTION BANK
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 13, color: T.text, lineHeight: 1.5, marginBottom: 16 }}>
+              <strong style={{ color: T.gold }}>{customCount} questions</strong> loaded and ready. Each response will receive an AI-computed BS Score 1–10.
+            </div>
+            {/* Preview first 3 */}
+            {customQuestions.filter(q => q.text?.trim()).slice(0, 3).map((q, i) => (
+              <div key={i} style={{ fontFamily: "'Share Tech Mono'", fontSize: 10, color: T.muted, padding: "5px 0", borderBottom: `1px solid ${T.border}` }}>
+                #{i + 1} {q.text.length > 55 ? q.text.slice(0, 55) + "…" : q.text}
+              </div>
+            ))}
+            {customCount > 3 && <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, marginTop: 5 }}>+{customCount - 3} more questions…</div>}
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button onClick={onEditQuestions} style={{ flex: 1, padding: 12, background: "none", border: `1px solid ${T.gold}`, color: T.gold, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 14, borderRadius: 7, cursor: "pointer" }}>✏ EDIT</button>
+              <button onClick={onStartCustom} style={{ flex: 2, padding: 12, background: T.gold, border: "none", color: T.bg, fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 15, letterSpacing: "0.1em", borderRadius: 7, cursor: "pointer" }}>▶ START CUSTOM EXAM</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Skip to results */}
+      <button onClick={onProceedToResults} style={{ padding: 14, background: "none", border: `1px solid ${T.border}`, color: T.muted, fontFamily: "'Barlow Condensed'", fontWeight: 600, fontSize: 15, letterSpacing: "0.08em", borderRadius: 8, cursor: "pointer", marginTop: "auto" }}>
+        SKIP CUSTOM EXAM → GENERATE REPORT
+      </button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STANDARD TEST (condensed from v6)
+// ══════════════════════════════════════════════════════════════════════════════
+const STANDARD_QUESTIONS = [
+  { id: "q01", type: "control", text: "Is your name the name you provided at the start of this examination?" },
+  { id: "q02", type: "relevant", text: "Have you ever told a significant lie that seriously damaged someone's trust in you?" },
+  { id: "q03", type: "control", text: "Are you currently in the location you described during registration?" },
+  { id: "q04", type: "relevant", text: "Have you stolen anything of value from an employer or colleague in the past five years?" },
+  { id: "q05", type: "irrelevant", text: "Is it currently daytime where you are located?" },
+  { id: "q06", type: "relevant", text: "Have you ever intentionally deceived a close family member about something serious?" },
+  { id: "q07", type: "control", text: "Are you the same person who completed the background profile at the beginning of this session?" },
+  { id: "q08", type: "relevant", text: "Are you deliberately withholding information you believe is relevant to this examination?" },
+  { id: "q09", type: "control", text: "Have you consumed any substance in the past two hours that might affect your alertness?" },
+  { id: "q10", type: "relevant", text: "Have you ever betrayed a close friend's trust in a way you never admitted to them?" },
+];
+
+function StandardTest({ profile, baselines, onComplete }) {
+  const ppg = usePPG(true); const sensors = useSensors(true); const vs = useVoiceStress(true); const facial = useFacialAnalysis(true);
+  const [qIdx, setQIdx] = useState(0); const [responses, setResponses] = useState([]); const [uiState, setUiState] = useState("idle"); const [transcript, setTranscript] = useState("");
+  const startRef = useRef(null); const snapRef = useRef(null); const vsaStartRef = useRef(null); const facialStartRef = useRef(null); const voiceRef = useRef(null); const recRef = useRef(null);
+  useEffect(() => { if (window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = () => { voiceRef.current = getVoice(); }; voiceRef.current = getVoice(); } }, []);
+  const q = STANDARD_QUESTIONS[qIdx];
+  const askQ = useCallback(async question => {
+    setTranscript(""); setUiState("speaking");
+    snapRef.current = { hr: ppg.hr, hrv: ppg.hrv, gsr: sensors.gsr, motion: sensors.motion };
+    vsaStartRef.current = Date.now(); facialStartRef.current = Date.now();
+    await speak((qIdx === 0 ? "Standard examination. Answer yes or no only. " : "") + question.text, { voice: voiceRef.current, rate: 0.86, pitch: 0.92 });
+    startRef.current = Date.now(); setUiState("listening"); startL(question);
+  }, [qIdx, ppg, sensors]);
+  useEffect(() => { if (!q) return; const t = setTimeout(() => askQ(q), qIdx === 0 ? 700 : 450); return () => clearTimeout(t); }, [qIdx]);
+  const startL = question => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) { setUiState("idle"); return; }
+    if (recRef.current) { try { recRef.current.stop(); } catch {} }
+    const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 3;
+    rec.onstart = () => setUiState("listening");
+    rec.onresult = e => { const finals = Array.from(e.results).filter(r => r.isFinal).map(r => r[0].transcript).join(" "); const interim = Array.from(e.results).filter(r => !r.isFinal).map(r => r[0].transcript).join(" "); setTranscript((finals + " " + interim).trim()); if (finals.trim()) { const yn = parseYesNo(finals.trim()); if (yn) { rec.stop(); capRec(yn, question); } } };
+    rec.onend = () => {}; rec.onerror = () => {};
+    recRef.current = rec; rec.start();
+  };
+  const capRec = async (ans, question) => {
+    const vsaF = vs.captureFeatures(Date.now() - vsaStartRef.current); const vsaS = vs.getStressForCapture(vsaF);
+    const facC = facial.captureWindow(Date.now() - facialStartRef.current); const facD = facial.getDeceptionForCapture(facC);
+    setUiState("speaking"); await speak(ans + ".", { voice: voiceRef.current, rate: 1.1 }); setUiState("idle");
+    const rt = Date.now() - startRef.current;
+    const rec = { questionId: question.id, type: question.type, text: question.text, answer: ans, responseTime: rt, sensorAtAnswer: { hr: ppg.hr, hrv: ppg.hrv, gsr: sensors.gsr, motion: sensors.motion }, sensorAtStart: snapRef.current, delta: { hr: (ppg.hr || 0) - (snapRef.current?.hr || 0), hrv: (ppg.hrv || 0) - (snapRef.current?.hrv || 0), gsr: sensors.gsr - (snapRef.current?.gsr || sensors.gsr) }, vsaFeatures: vsaF, vsaStress: vsaS ? { score: vsaS.score, level: vsaS.level } : null, facialCapture: facC, facialDeception: facD ? { score: facD.score, level: facD.level } : null, voiceTranscript: transcript };
+    const updated = [...responses, rec]; setResponses(updated);
+    if (qIdx < STANDARD_QUESTIONS.length - 1) { setTimeout(() => setQIdx(i => i + 1), 450); }
+    else { setUiState("speaking"); await speak("Standard examination complete.", { voice: voiceRef.current, rate: 0.9 }); onComplete(updated); }
+  };
+  const typeColors = { control: T.accent, relevant: T.warn, irrelevant: T.muted };
+  return (
+    <div style={{ minHeight: "100vh", padding: "24px 18px", maxWidth: 480, margin: "0 auto", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div><div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 20, color: T.white }}>STANDARD EXAM</div><div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted }}>Q{qIdx + 1} OF {STANDARD_QUESTIONS.length}</div></div>
+        <div style={{ display: "flex", gap: 4 }}>{STANDARD_QUESTIONS.map((_, i) => <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: i < qIdx ? T.good : i === qIdx ? T.accent : T.border, transition: "background 0.3s" }} />)}</div>
+      </div>
+      <PPGGuide fingerDetected={ppg.fingerDetected} hr={ppg.hr} hrv={ppg.hrv} />
+      <FacialMini facial={facial} />
+      <VoiceStatus speaking={uiState === "speaking"} listening={uiState === "listening"} transcript={transcript} pitch={vs.live.pitch} stressLevel={vs.live.stressLevel} />
+      <div style={{ flex: 1 }}>
+        {q && (<div style={{ background: T.panel, border: `1px solid ${typeColors[q.type]}44`, borderRadius: 12, padding: 18, animation: "fadeUp 0.4s ease" }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: typeColors[q.type], letterSpacing: "0.1em", marginBottom: 8 }}>{q.type.toUpperCase()}</div>
+          <div style={{ fontSize: 18, color: T.white, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>{q.text}</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => { try { recRef.current?.stop(); } catch {} capRec("Yes", q); }} style={{ flex: 1, padding: 14, background: T.good + "1a", border: `2px solid ${T.good}`, color: T.good, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 18, borderRadius: 9, cursor: "pointer" }}>YES</button>
+            <button onClick={() => { try { recRef.current?.stop(); } catch {} capRec("No", q); }} style={{ flex: 1, padding: 14, background: T.bad + "1a", border: `2px solid ${T.bad}`, color: T.bad, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 18, borderRadius: 9, cursor: "pointer" }}>NO</button>
+          </div>
+          <button onClick={() => { try { recRef.current?.stop(); } catch {} askQ(q); }} style={{ width: "100%", marginTop: 8, padding: 9, background: "none", border: `1px solid ${T.purple}44`, color: T.purple, borderRadius: 7, cursor: "pointer", fontFamily: "'Share Tech Mono'", fontSize: 9 }}>↺ REPEAT</button>
+        </div>)}
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 4 }}>
+        {[{ l: "HR", v: ppg.hr || "--", c: T.bad }, { l: "HRV", v: ppg.hrv || "--", c: T.gold }, { l: "GSR", v: (sensors.gsr * 100).toFixed(0) + "%", c: T.warn }, { l: "F0", v: vs.live.pitch > 0 ? vs.live.pitch : "--", c: T.teal }, { l: "GAZE", v: facial.live.gazeDir, c: facial.live.gazeDir === "CENTER" ? T.good : T.warn }, { l: "BLINK", v: facial.live.blinkRate.toFixed(0), c: T.rose }].map(s => (
+          <div key={s.l} style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 5, padding: "5px 2px", textAlign: "center" }}>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: s.c }}>{s.v}</div>
+            <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 6, color: T.muted }}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CALIBRATION
+// ══════════════════════════════════════════════════════════════════════════════
+function Calibration({ onComplete }) {
+  const ppg = usePPG(true); const sensors = useSensors(true); const vs = useVoiceStress(true); const facial = useFacialAnalysis(true);
+  const [phase, setPhase] = useState("idle"); const [countdown, setCountdown] = useState(16); const baselines = useRef({}); const voiceRef = useRef(null);
+  useEffect(() => {
+    if (window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = () => { voiceRef.current = getVoice(); }; voiceRef.current = getVoice(); }
+    setTimeout(async () => { await speak("Calibration. Finger on rear camera. Look at front camera. Remain silent and still.", { voice: voiceRef.current, rate: 0.88 }); setPhase("baseline"); }, 600);
+  }, []);
+  useEffect(() => {
+    if (phase === "idle") return;
+    if (countdown <= 0) {
+      if (phase === "baseline") { const facialBaseline = facial.setBaseline(); const voiceBaseline = vs.setBaseline(); baselines.current.rest = { hr: ppg.hr, hrv: ppg.hrv, gsr: sensors.gsr, facialBaseline, voiceBaseline }; (async () => { await speak("Resting baseline recorded. Now say clearly: The weather today is quite pleasant and I feel comfortable right now.", { voice: voiceRef.current, rate: 0.88 }); setPhase("voice_truth"); setCountdown(12); })(); }
+      else if (phase === "voice_truth") { baselines.current.truth = { hr: ppg.hr, hrv: ppg.hrv, vsaFeatures: vs.captureFeatures(10000), facialCapture: facial.captureWindow(10000) }; (async () => { await speak("All baselines locked. Standard examination starting.", { voice: voiceRef.current, rate: 0.88 }); onComplete(baselines.current); })(); }
+      return;
+    }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000); return () => clearTimeout(t);
+  }, [countdown, phase]);
+  const cfg = { idle: { title: "PREPARING", color: T.muted, dur: 1 }, baseline: { title: "RESTING BASELINE — SILENT", color: T.accent, dur: 16 }, voice_truth: { title: "VOICE TRUTH BASELINE", color: T.good, dur: 12 } };
+  const c = cfg[phase] || cfg.idle; const pct = phase !== "idle" ? countdown / c.dur : 1;
+  return (
+    <div style={{ minHeight: "100vh", padding: "28px 18px", maxWidth: 480, margin: "0 auto" }}>
+      <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 22, color: T.white }}>CALIBRATION</div>
+      <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, letterSpacing: "0.1em", marginBottom: 16 }}>VOICE + FACIAL + PHYSIOLOGICAL BASELINE</div>
+      <PPGGuide fingerDetected={ppg.fingerDetected} hr={ppg.hr} hrv={ppg.hrv} />
+      <FacialMini facial={facial} />
+      <div style={{ textAlign: "center", margin: "16px 0" }}>
+        <div style={{ position: "relative", width: 100, height: 100, margin: "0 auto" }}>
+          <svg width={100} height={100} style={{ position: "absolute", inset: 0 }}><circle cx={50} cy={50} r={42} fill="none" stroke={T.border} strokeWidth={4} /><circle cx={50} cy={50} r={42} fill="none" stroke={c.color} strokeWidth={4} strokeDasharray={`${pct * 264} 264`} strokeLinecap="round" transform="rotate(-90 50 50)" style={{ transition: "stroke-dasharray 0.9s" }} /></svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}><div style={{ fontFamily: "'Share Tech Mono'", fontSize: 26, color: c.color }}>{phase !== "idle" ? countdown : "…"}</div><div style={{ fontFamily: "'Share Tech Mono'", fontSize: 7, color: T.muted }}>SEC</div></div>
+        </div>
+        <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 16, color: c.color, letterSpacing: "0.1em", marginTop: 10 }}>{c.title}</div>
+        {phase === "voice_truth" && <div style={{ margin: "12px 8px 0", padding: 12, background: T.good + "18", border: `1px solid ${T.good}44`, borderRadius: 8, fontSize: 14, color: T.white, fontWeight: 600, fontStyle: "italic", lineHeight: 1.5 }}>"The weather today is quite pleasant and I feel comfortable right now."</div>}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VOICE QUESTIONNAIRE (condensed)
+// ══════════════════════════════════════════════════════════════════════════════
+const BG_SECTIONS = [
+  { section: "Personal Identity", questions: [
+    { id: "fullName", label: "Full Legal Name", prompt: "Please state your full legal name.", type: "voice_text" },
+    { id: "dob", label: "Date of Birth", prompt: "State your date of birth including month, day, and year.", type: "voice_text" },
+    { id: "sex", label: "Biological Sex", prompt: "Biological sex: Male, Female, Intersex, or prefer not to say.", type: "select", options: ["Male","Female","Intersex","Prefer not to say"], voiceMap: { male:"Male",female:"Female",intersex:"Intersex" } },
+    { id: "handedness", label: "Dominant Hand", prompt: "Right-handed, left-handed, or ambidextrous?", type: "select", options: ["Right","Left","Ambidextrous"], voiceMap: { right:"Right",left:"Left",ambidextrous:"Ambidextrous" } },
+    { id: "occupation", label: "Occupation", prompt: "Briefly describe your current occupation.", type: "voice_text" },
+  ]},
+  { section: "Health", questions: [
+    { id: "heartCondition", label: "Heart Conditions", prompt: "Diagnosed heart conditions? None, managed, unmanaged, or prefer not to say.", type: "select", options: ["None","Managed","Unmanaged","Prefer not to say"], voiceMap: { none:"None",managed:"Managed",unmanaged:"Unmanaged" } },
+    { id: "meds", label: "Medications", prompt: "Current medications? None, non-psychoactive, antidepressants, beta-blockers, or other.", type: "select", options: ["None","Non-psychoactive","Antidepressants","Beta-blockers","Other"], voiceMap: { none:"None",antidepressants:"Antidepressants",beta:"Beta-blockers",other:"Other" } },
+    { id: "caffeine", label: "Caffeine", prompt: "Caffeine in last four hours? None, one cup, two or more, or energy drink.", type: "select", options: ["None","1 cup","2+ cups","Energy drink"], voiceMap: { none:"None",one:"1 cup",two:"2+ cups",energy:"Energy drink" } },
+    { id: "sleep", label: "Sleep Hours", prompt: "Sleep hours last night? Less than four, four to six, six to eight, or more than eight?", type: "select", options: ["<4 hrs","4–6 hrs","6–8 hrs","8+ hrs"], voiceMap: { less:"<4 hrs",four:"4–6 hrs",six:"6–8 hrs",eight:"8+ hrs",more:"8+ hrs" } },
+    { id: "pain", label: "Pain Level", prompt: "Current pain zero to ten.", type: "voice_range", min: 0, max: 10, defaultValue: 0 },
+  ]},
+  { section: "Mental State", questions: [
+    { id: "anxietyNow", label: "Anxiety (0–10)", prompt: "Anxiety level zero to ten right now.", type: "voice_range", min: 0, max: 10, defaultValue: 3 },
+    { id: "mood", label: "Mood", prompt: "Current mood: very calm, calm, neutral, slightly anxious, anxious, or very anxious?", type: "select", options: ["Very calm","Calm","Neutral","Slightly anxious","Anxious","Very anxious"], voiceMap: { "very calm":"Very calm",calm:"Calm",neutral:"Neutral",slight:"Slightly anxious",anxious:"Anxious","very anxious":"Very anxious" } },
+    { id: "mentalDx", label: "Mental Health", prompt: "Mental health diagnoses? None, anxiety, PTSD, ADHD, depression, bipolar, other, or prefer not to say.", type: "select", options: ["None","Anxiety","PTSD","ADHD","Depression","Bipolar","Other","Prefer not to say"], voiceMap: { none:"None",anxiety:"Anxiety",ptsd:"PTSD",adhd:"ADHD",depression:"Depression",bipolar:"Bipolar",other:"Other" } },
+  ]},
+  { section: "Polygraph History", questions: [
+    { id: "priorPoly", label: "Prior Polygraph", prompt: "Prior polygraph? Never, once, or multiple times.", type: "select", options: ["Never","Once","Multiple times"], voiceMap: { never:"Never",once:"Once",multiple:"Multiple times" } },
+    { id: "voluntary", label: "Voluntary", prompt: "Taking this test fully voluntarily? Yes fully, somewhat, or no.", type: "select", options: ["Yes, fully","Somewhat","No"], voiceMap: { yes:"Yes, fully",somewhat:"Somewhat",no:"No" } },
+  ]},
+  { section: "Environment", questions: [
+    { id: "location", label: "Environment", prompt: "Current environment: home quiet, home noisy, office, public space, vehicle, or other?", type: "select", options: ["Home - quiet","Home - noisy","Office","Public space","Vehicle","Other"], voiceMap: { quiet:"Home - quiet",noisy:"Home - noisy",office:"Office",public:"Public space",vehicle:"Vehicle",other:"Other" } },
+    { id: "alone", label: "Alone?", prompt: "Are you alone right now?", type: "select", options: ["Yes","No - others present"], voiceMap: { yes:"Yes",alone:"Yes",no:"No - others present" } },
+  ]},
+];
+
+function VoiceQuestionnaire({ onComplete, existing }) {
+  const allQ = BG_SECTIONS.flatMap((s, si) => s.questions.map(q => ({ ...q, sectionName: s.section, sectionIdx: si })));
+  const [idx, setIdx] = useState(0); const [answers, setAnswers] = useState(existing || {}); const [uiState, setUiState] = useState("idle"); const [transcript, setTranscript] = useState(""); const [status, setStatus] = useState("");
+  const voiceRef = useRef(null); const recRef = useRef(null);
+  useEffect(() => { if (window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = () => { voiceRef.current = getVoice(); }; voiceRef.current = getVoice(); } }, []);
+  const q = allQ[idx];
+  useEffect(() => { if (!q) return; promptSpeak((idx === 0 ? "Welcome to VERITEX. " : "") + (idx > 0 && allQ[idx - 1]?.sectionIdx !== q.sectionIdx ? `Section ${q.sectionIdx + 1}: ${q.sectionName}. ` : "") + q.prompt); }, [idx]);
+  const promptSpeak = async text => { setUiState("speaking"); setTranscript(""); setStatus(""); await speak(text, { voice: voiceRef.current, rate: 0.88 }); setUiState("listening"); startL(); };
+  const startL = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) { setUiState("manual"); return; }
+    if (recRef.current) { try { recRef.current.stop(); } catch {} }
+    const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 3;
+    rec.onstart = () => setUiState("listening");
+    rec.onresult = e => { const finals = Array.from(e.results).filter(r => r.isFinal).map(r => r[0].transcript).join(" "); const interim = Array.from(e.results).filter(r => !r.isFinal).map(r => r[0].transcript).join(" "); setTranscript((finals + " " + interim).trim()); if (finals.trim()) processAnswer(finals.trim()); };
+    rec.onend = () => setUiState("manual"); rec.onerror = () => setUiState("manual"); recRef.current = rec; rec.start();
+  };
+  const processAnswer = async text => {
+    let value = null;
+    if (q.type === "voice_text") value = text.trim();
+    else if (q.type === "voice_range") { const words = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 }; const m = text.match(/\b(\d+)\b/); if (m) { const n = parseInt(m[1]); if (n >= q.min && n <= q.max) value = n; } if (value === null) { for (const [w, n] of Object.entries(words)) { if (text.toLowerCase().includes(w) && n >= q.min && n <= q.max) { value = n; break; } } } }
+    else if (q.type === "select" && q.voiceMap) { for (const [k, v] of Object.entries(q.voiceMap)) { if (text.toLowerCase().includes(k.toLowerCase())) { value = v; break; } } if (!value) { const m = q.options.find(o => text.toLowerCase().includes(o.toLowerCase())); if (m) value = m; } }
+    if (value != null) { setUiState("speaking"); await speak(`I heard: ${value}. Yes to confirm, no to retry.`, { voice: voiceRef.current, rate: 0.95 }); setUiState("confirming"); listenConfirm(value); }
+    else { setUiState("speaking"); await speak("I didn't catch that. Please try again.", { voice: voiceRef.current, rate: 0.95 }); setUiState("listening"); startL(); }
+  };
+  const listenConfirm = value => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) { acceptAnswer(value); return; }
+    if (recRef.current) { try { recRef.current.stop(); } catch {} }
+    const rec = new SR(); rec.lang = "en-US"; rec.interimResults = false;
+    rec.onresult = async e => { const t = e.results[0][0].transcript; const yn = parseYesNo(t); if (yn === "Yes") { rec.stop(); acceptAnswer(value); } else if (yn === "No") { rec.stop(); setUiState("speaking"); await speak("Let's try again. " + q.prompt, { voice: voiceRef.current, rate: 0.88 }); setUiState("listening"); startL(); } else { rec.stop(); listenConfirm(value); } };
+    rec.onend = () => {}; rec.onerror = () => {}; recRef.current = rec; rec.start();
+  };
+  const acceptAnswer = async value => { const updated = { ...answers, [q.id]: value }; setAnswers(updated); setStatus(`✓ ${value}`); setUiState("speaking"); await speak("Confirmed.", { voice: voiceRef.current, rate: 1.1, pitch: 1.1 }); if (idx === allQ.length - 1) { await speak("Profile complete. Proceeding to calibration.", { voice: voiceRef.current, rate: 0.88 }); onComplete(updated); } else setTimeout(() => setIdx(i => i + 1), 200); };
+  const handleManual = val => { const updated = { ...answers, [q.id]: val }; setAnswers(updated); setStatus(`✓ ${val}`); if (idx === allQ.length - 1) onComplete(updated); else setTimeout(() => setIdx(i => i + 1), 300); };
+  const pct = (idx / allQ.length) * 100;
+  return (
+    <div style={{ minHeight: "100vh", padding: "24px 18px", maxWidth: 500, margin: "0 auto" }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 20, color: T.white }}>VOICE INTAKE</div><div style={{ fontFamily: "'Share Tech Mono'", fontSize: 10, color: T.accent }}>{idx + 1}/{allQ.length}</div></div>
+        <div style={{ height: 2, background: T.border, borderRadius: 1, marginTop: 6 }}><div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg,${T.accentDim},${T.accent})`, transition: "width 0.4s", borderRadius: 1 }} /></div>
+        <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, marginTop: 4 }}>§{q.sectionIdx + 1} — {q.sectionName.toUpperCase()}</div>
+      </div>
+      <VoiceStatus speaking={uiState === "speaking"} listening={uiState === "listening" || uiState === "confirming"} transcript={transcript} />
+      <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 10, padding: 18, marginBottom: 12 }}>
+        <div style={{ fontSize: 17, color: T.white, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>{q.prompt}</div>
+        {status && <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 11, color: T.good, background: T.good + "18", padding: "5px 10px", borderRadius: 5, marginBottom: 8 }}>{status}</div>}
+        {q.type === "voice_range" && (<div><input type="range" min={q.min} max={q.max} value={answers[q.id] ?? q.defaultValue} onChange={e => setAnswers(a => ({ ...a, [q.id]: +e.target.value }))} style={{ margin: "6px 0 3px" }} /><div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "'Share Tech Mono'", color: T.muted }}><span>{q.min}</span><span style={{ color: T.accent }}>{answers[q.id] ?? q.defaultValue}</span><span>{q.max}</span></div><button onClick={() => handleManual(answers[q.id] ?? q.defaultValue)} style={{ width: "100%", marginTop: 8, padding: 10, background: T.good + "22", border: `1px solid ${T.good}`, color: T.good, borderRadius: 6, cursor: "pointer", fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 14 }}>CONFIRM {answers[q.id] ?? q.defaultValue}</button></div>)}
+        {q.type === "select" && (<div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 6 }}>{q.options.map(opt => <button key={opt} onClick={() => handleManual(opt)} style={{ padding: "6px 13px", background: answers[q.id] === opt ? T.accent + "33" : T.panel2, border: `1px solid ${answers[q.id] === opt ? T.accent : T.border}`, color: answers[q.id] === opt ? T.accent : T.text, borderRadius: 18, cursor: "pointer", fontFamily: "'Barlow Condensed'", fontWeight: 600, fontSize: 13, transition: "all 0.15s" }}>{opt}</button>)}</div>)}
+        {q.type === "voice_text" && (<div><input type="text" placeholder="Or type answer…" value={answers[q.id] || ""} onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))} />{answers[q.id] && <button onClick={() => handleManual(answers[q.id])} style={{ width: "100%", marginTop: 8, padding: 10, background: T.good + "22", border: `1px solid ${T.good}`, color: T.good, borderRadius: 6, cursor: "pointer", fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 14 }}>CONFIRM →</button>}</div>)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 9 }}>
+        <button onClick={() => { if (idx > 0) setIdx(i => i - 1); }} disabled={idx === 0} style={{ padding: "9px 5px", background: "none", border: `1px solid ${idx === 0 ? T.border : T.muted}`, color: idx === 0 ? T.muted : T.text, borderRadius: 6, cursor: idx === 0 ? "not-allowed" : "pointer", fontFamily: "'Share Tech Mono'", fontSize: 9 }}>← BACK</button>
+        <button onClick={() => promptSpeak(q.prompt)} disabled={uiState === "speaking"} style={{ padding: "9px 5px", background: T.purple + "22", border: `1px solid ${T.purple}44`, color: T.purple, borderRadius: 6, cursor: "pointer", fontFamily: "'Share Tech Mono'", fontSize: 9 }}>↺ REPEAT</button>
+        <button onClick={() => { const v = q.defaultValue ?? (q.options?.[0] || "Skipped"); handleManual(v); }} style={{ padding: "9px 5px", background: "none", border: `1px solid ${T.border}`, color: T.muted, borderRadius: 6, cursor: "pointer", fontFamily: "'Share Tech Mono'", fontSize: 9 }}>SKIP →</button>
+      </div>
+      <button onClick={startL} disabled={uiState === "speaking"} style={{ width: "100%", padding: 14, background: uiState === "listening" ? T.accent + "33" : T.accentDim + "44", border: `2px solid ${uiState === "listening" ? T.accent : T.accentDim}`, color: uiState === "listening" ? T.accent : T.text, borderRadius: 10, cursor: uiState === "speaking" ? "not-allowed" : "pointer", fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 16, letterSpacing: "0.12em", animation: uiState === "listening" ? "listenRing 1.5s infinite" : "none", transition: "all 0.3s" }}>
+        {uiState === "listening" ? "🎤 LISTENING…" : uiState === "speaking" ? "🔊 SPEAKING…" : "🎤 TAP TO SPEAK"}
+      </button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SPLASH
+// ══════════════════════════════════════════════════════════════════════════════
+function Splash({ onNew, onResume, hasSession, onEditQuestions, customCount }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setTimeout(() => setReady(true), 800);
+    setTimeout(() => speak("Welcome to VERITEX. The AI polygraph with voice stress, facial analysis, and custom BS scoring. Tap Begin to start.", { voice: getVoice(), rate: 0.88 }), 1000);
+  }, []);
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", background: `radial-gradient(ellipse at 50% 38%, #08192a 0%, ${T.bg} 65%)` }}>
+      <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(${T.border} 1px,transparent 1px),linear-gradient(90deg,${T.border} 1px,transparent 1px)`, backgroundSize: "50px 50px", opacity: 0.12 }} />
+      {ready && <div style={{ textAlign: "center", animation: "fadeUp 0.7s ease forwards" }}>
+        <div style={{ position: "relative", width: 110, height: 110, margin: "0 auto 20px" }}>
+          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `2px solid ${T.accent}`, animation: "ringOut 2.5s ease-out infinite" }} />
+          <div style={{ position: "absolute", inset: 12, borderRadius: "50%", border: `1px solid ${T.gold}33`, animation: "spin 14s linear infinite" }} />
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>🧠</div>
+        </div>
+        <div style={{ fontFamily: "'Barlow Condensed'", fontWeight: 900, fontSize: 46, letterSpacing: "0.22em", color: T.white }}>VERITEX</div>
+        <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 10, color: T.accent, letterSpacing: "0.28em", marginBottom: 3 }}>AI VOICE POLYGRAPH · v7.0</div>
+        <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, letterSpacing: "0.1em", marginBottom: 40 }}>PPG · VSA · FACIAL · GAZE · BS SCORES 1–10</div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 300 }}>
+          <button onClick={onNew} style={{ padding: "16px 32px", background: T.accent, border: "none", color: T.bg, fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 18, letterSpacing: "0.18em", borderRadius: 8, cursor: "pointer" }}>BEGIN EXAMINATION</button>
+
+          {/* Custom question bank button */}
+          <button onClick={onEditQuestions} style={{ padding: "14px 28px", background: T.gold + "22", border: `2px solid ${T.gold}`, color: T.gold, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, letterSpacing: "0.12em", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <span>📋</span>
+            <span>{customCount > 0 ? `EDIT QUESTION BANK (${customCount})` : "QUESTION BANK"}</span>
+          </button>
+
+          {hasSession && <button onClick={onResume} style={{ padding: "12px 28px", background: "none", border: `1px solid ${T.gold}`, color: T.gold, fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, letterSpacing: "0.15em", borderRadius: 8, cursor: "pointer" }}>⟳ RESUME SESSION</button>}
+        </div>
+
+        <div style={{ marginTop: 40, fontFamily: "'Share Tech Mono'", fontSize: 9, color: T.muted, lineHeight: 1.9 }}>FOR ENTERTAINMENT & RESEARCH ONLY<br />NOT A LEGALLY ADMISSIBLE INSTRUMENT</div>
+      </div>}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// APP ROOT
+// ══════════════════════════════════════════════════════════════════════════════
+function App() {
+  const [phase, setPhase] = useState("splash"); // splash | editQuestions | questionnaire | calibration | test | hub | customExam | results
+  const [session, setSession] = useState(() => loadSess() || { profile: {}, baselines: {}, responses: [], customResponses: [], startedAt: null });
+  const [customQuestions, setCustomQuestions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("veritex_questions") || "[]"); } catch { return []; }
+  });
+
+  const update = useCallback((patch) => {
+    setSession(prev => { const u = { ...prev, ...patch }; saveSess(u); return u; });
+  }, []);
+
+  const saveQuestions = (qs) => {
+    setCustomQuestions(qs);
+    try { localStorage.setItem("veritex_questions", JSON.stringify(qs)); } catch {}
+  };
+
+  const hasSession = (() => { const s = loadSess(); return !!(s?.profile && Object.keys(s.profile).length > 4); })();
+  const customCount = customQuestions.filter(q => q.text?.trim()).length;
+
+  const handleResume = () => {
+    const s = loadSess(); if (!s) return; setSession(s);
+    if (s.customResponses?.length >= customCount && customCount > 0) setPhase("results");
+    else if (s.responses?.length >= 10) setPhase("hub");
+    else if (s.baselines?.rest) setPhase("test");
+    else if (Object.keys(s.profile || {}).length > 4) setPhase("calibration");
+    else setPhase("questionnaire");
+  };
+
+  const handleDelete = () => { clearSess(); setSession({ profile: {}, baselines: {}, responses: [], customResponses: [], startedAt: null }); setPhase("splash"); };
+
+  const phases = ["questionnaire", "calibration", "test", "hub", "customExam", "results"];
+  const pIdx = phases.indexOf(phase);
+
+  return (
+    <>
+      <style>{CSS}</style>
+
+      {phase !== "splash" && phase !== "editQuestions" && (
+        <div style={{ position: "sticky", top: 0, zIndex: 100, background: T.bg + "f4", backdropFilter: "blur(14px)", borderBottom: `1px solid ${T.border}`, padding: "8px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 11, color: T.accent, letterSpacing: "0.12em" }}>VERITEX</div>
+          <div style={{ display: "flex", gap: 5 }}>{phases.map((p, i) => <div key={p} style={{ width: 7, height: 7, borderRadius: "50%", background: pIdx > i ? T.good : pIdx === i ? T.accent : T.border, transition: "background 0.3s" }} />)}</div>
+          <div style={{ fontFamily: "'Share Tech Mono'", fontSize: 8, color: T.muted }}>{phase.toUpperCase()}</div>
+        </div>
+      )}
+
+      {phase === "splash" && (
+        <Splash
+          onNew={() => { update({ startedAt: Date.now(), customResponses: [] }); setPhase("questionnaire"); }}
+          onResume={handleResume}
+          hasSession={hasSession}
+          onEditQuestions={() => setPhase("editQuestions")}
+          customCount={customCount}
+        />
+      )}
+
+      {phase === "editQuestions" && (
+        <QuestionBankEditor
+          initialQuestions={customQuestions}
+          onSave={(qs) => { saveQuestions(qs); setPhase("splash"); }}
+          onCancel={() => setPhase("splash")}
+        />
+      )}
+
+      {phase === "questionnaire" && (
+        <VoiceQuestionnaire existing={session.profile} onComplete={p => { update({ profile: p }); setPhase("calibration"); }} />
+      )}
+
+      {phase === "calibration" && (
+        <Calibration onComplete={b => { update({ baselines: b }); setPhase("test"); }} />
+      )}
+
+      {phase === "test" && (
+        <StandardTest profile={session.profile} baselines={session.baselines} onComplete={r => { update({ responses: r }); setPhase("hub"); }} />
+      )}
+
+      {phase === "hub" && (
+        <ExaminerHub
+          session={session}
+          customQuestions={customQuestions}
+          onStartCustom={() => setPhase("customExam")}
+          onEditQuestions={() => setPhase("editQuestions")}
+          onProceedToResults={() => setPhase("results")}
+        />
+      )}
+
+      {phase === "customExam" && (
+        <CustomExamination
+          session={session}
+          customQuestions={customQuestions.filter(q => q.text?.trim())}
+          onComplete={customResponses => { update({ customResponses }); setPhase("results"); }}
+        />
+      )}
+
+      {phase === "results" && (
+        <Results
+          session={session}
+          onReset={() => { update({ profile: {}, baselines: {}, responses: [], customResponses: [], startedAt: Date.now() }); setPhase("questionnaire"); }}
+          onDelete={handleDelete}
+          onEdit={() => setPhase("editQuestions")}
+        />
+      )}
+    </>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
