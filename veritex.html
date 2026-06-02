@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#060810"/>
+<title>VERITEX · AI Polygraph v8</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body,#root{height:100%;min-height:100%;}
+body{background:#060810;font-family:sans-serif;-webkit-tap-highlight-color:transparent;}
+#apiscreen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;background:radial-gradient(ellipse at 50% 40%,#08192a,#060810);}
+#apiscreen h1{font-size:36px;letter-spacing:.22em;color:#e8f2f8;margin-bottom:2px;font-weight:900;}
+#apiscreen .sub{font-size:10px;color:#2a4055;letter-spacing:.2em;margin-bottom:28px;font-family:monospace;}
+#apiscreen .card{background:#0b0f18;border:1px solid #162030;border-radius:12px;padding:24px 20px;width:100%;max-width:360px;}
+#apiscreen label{font-size:10px;color:#2a4055;text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:7px;font-family:monospace;}
+#apiscreen input{width:100%;background:#050810;border:1px solid #162030;color:#e8f2f8;padding:11px 13px;border-radius:6px;font-size:14px;outline:none;font-family:monospace;transition:border-color .2s;margin-bottom:4px;}
+#apiscreen input:focus{border-color:#00d4ff;}
+#apiscreen .hint{font-size:11px;color:#2a4055;line-height:1.7;margin-top:8px;}
+#apiscreen .hint a{color:#00d4ff;text-decoration:none;}
+#apiscreen .gobtn{margin-top:16px;width:100%;padding:14px;background:#00d4ff;border:none;color:#060810;font-size:15px;font-weight:800;letter-spacing:.15em;border-radius:7px;cursor:pointer;}
+#apiscreen .gobtn:disabled{background:#162030;color:#2a4055;cursor:not-allowed;}
+#apiscreen .err{margin-top:8px;font-size:12px;color:#ff2550;text-align:center;}
+#apiscreen .skip{margin-top:10px;font-size:11px;color:#2a4055;text-align:center;cursor:pointer;text-decoration:underline;}
+#root{display:block;}
+@media print{
+  #apiscreen{display:none!important;}
+  #root{display:block!important;}
+  .no-print{display:none!important;}
+  body{background:#fff!important;color:#000!important;font-size:12px;}
+  .print-section{page-break-inside:avoid;border:1px solid #ccc!important;background:#fff!important;color:#000!important;margin-bottom:8px;}
+}
+</style>
+</head>
+<body>
+<div id="root" style="display:block;"></div>
+<script>
+window.VERITEX_API_KEY="";
+</script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const T = {
+  bg:"#060810",panel:"#0b0f18",panel2:"#0f1520",border:"#162030",
+  accent:"#00d4ff",accentDim:"#003d55",warn:"#ff8c3a",good:"#00ff88",
+  bad:"#ff2550",text:"#9ab8cc",muted:"#2a4055",white:"#e8f2f8",
+  gold:"#ffc947",purple:"#b06fff",teal:"#00e5cc",rose:"#ff6b9d",mint:"#00ffcc",
+};
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:${T.bg};color:${T.text};font-family:'Barlow Condensed',sans-serif;overflow-x:hidden;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-track{background:${T.panel};}::-webkit-scrollbar-thumb{background:${T.accentDim};border-radius:2px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.2}}
+@keyframes hbeat{0%,100%{transform:scale(1)}14%{transform:scale(1.25)}28%{transform:scale(1)}}
+@keyframes ringOut{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3.2);opacity:0}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes voiceBar{0%,100%{transform:scaleY(0.25)}50%{transform:scaleY(1)}}
+@keyframes listenRing{0%{box-shadow:0 0 0 0 rgba(0,212,255,.65)}70%{box-shadow:0 0 0 20px rgba(0,212,255,0)}100%{box-shadow:0 0 0 0 rgba(0,212,255,0)}}
+@keyframes speakRing{0%{box-shadow:0 0 0 0 rgba(176,111,255,.7)}70%{box-shadow:0 0 0 22px rgba(176,111,255,0)}100%{box-shadow:0 0 0 0 rgba(176,111,255,0)}}
+@keyframes stressFlash{0%,100%{background:transparent}50%{background:rgba(255,37,80,.07)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes bsGlow{0%,100%{text-shadow:0 0 4px currentColor}50%{text-shadow:0 0 18px currentColor,0 0 32px currentColor}}
+@keyframes scorePop{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes btPulse{0%{box-shadow:0 0 0 0 rgba(0,255,204,.6)}70%{box-shadow:0 0 0 12px rgba(0,255,204,0)}100%{box-shadow:0 0 0 0 rgba(0,255,204,0)}}
+input,select,textarea{background:#050810;border:1px solid ${T.border};color:${T.white};font-family:'Barlow Condensed',sans-serif;font-size:16px;border-radius:5px;padding:10px 14px;width:100%;outline:none;transition:border-color .2s;}
+input:focus,select:focus,textarea:focus{border-color:${T.accent};}
+input[type=range]{padding:0;height:3px;accent-color:${T.accent};background:transparent;}
+select option{background:#050810;}
+label{font-size:10px;color:${T.muted};text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:5px;font-family:'Share Tech Mono';}
+button:active{transform:scale(.96);}
+`;
+
+// SESSION STORE
+const SK="veritex_v8";
+const loadSess=()=>{try{return JSON.parse(localStorage.getItem(SK)||"null");}catch{return null;}};
+const saveSess=d=>{try{localStorage.setItem(SK,JSON.stringify(d));}catch{}};
+const clearSess=()=>{try{localStorage.removeItem(SK);}catch{}};
+const loadSettings=()=>{try{return JSON.parse(localStorage.getItem("veritex_settings")||"{}");}catch{return {};}};
+const saveSettings=d=>{try{localStorage.setItem("veritex_settings",JSON.stringify(d));}catch{}};
+
+// AUTO-DELETE CHECK
+function checkAutoDelete(){
+  const sess=loadSess();
+  if(!sess)return;
+  const settings=loadSettings();
+  if(!settings.autoDeleteHours)return;
+  const exp=sess.startedAt+(settings.autoDeleteHours*3600000);
+  if(Date.now()>exp){clearSess();console.log("Session auto-deleted");}
+}
+
+// BS SCORE UTILS
+function bsColor(s){if(s>=9)return T.good;if(s>=7)return "#7fff6a";if(s>=5)return T.gold;if(s>=3)return T.warn;return T.bad;}
+function bsLabel(s){if(s>=9)return "CERTAINLY TRUE";if(s>=7)return "LIKELY TRUE";if(s>=5)return "UNCERTAIN";if(s>=3)return "LIKELY FALSE";return "PROBABLY FALSE";}
+
+function BSMeter({score,label,compact=false}){
+  const color=bsColor(score);const pct=((score-1)/9)*100;const verdict=bsLabel(score);
+  if(compact)return(
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <div style={{fontFamily:"'Share Tech Mono'",fontSize:20,color,lineHeight:1,animation:"bsGlow 2s ease infinite",minWidth:28,textAlign:"center"}}>{score}</div>
+      <div style={{flex:1}}>
+        <div style={{height:4,background:T.border,borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${T.bad},${T.warn} 45%,${T.gold} 65%,${T.good})`,transition:"width 0.8s ease"}}/></div>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color,marginTop:2}}>{verdict}</div>
+      </div>
+    </div>
+  );
+  return(
+    <div style={{textAlign:"center",animation:"scorePop 0.6s ease forwards"}}>
+      {label&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,letterSpacing:"0.1em",marginBottom:6}}>{label}</div>}
+      <div style={{position:"relative",width:90,height:90,margin:"0 auto 8px"}}>
+        <svg width={90} height={90} style={{position:"absolute",inset:0}}>
+          <circle cx={45} cy={45} r={38} fill="none" stroke={T.border} strokeWidth={5}/>
+          <circle cx={45} cy={45} r={38} fill="none" stroke={color} strokeWidth={5} strokeDasharray={`${pct*2.39} 239`} strokeLinecap="round" transform="rotate(-90 45 45)" style={{transition:"stroke-dasharray 0.9s ease"}}/>
+        </svg>
+        <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:26,color,lineHeight:1,animation:"bsGlow 2s ease infinite"}}>{score}</div>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted}}>/ 10</div>
+        </div>
+      </div>
+      <div style={{fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:14,color,letterSpacing:"0.08em"}}>{verdict}</div>
+    </div>
+  );
+}
+
+// TREND CHART
+function TrendChart({responses=[],customResponses=[]}){
+  const cvRef=useRef(null);
+  useEffect(()=>{
+    const cv=cvRef.current;if(!cv)return;
+    const ctx=cv.getContext("2d");const W=cv.width,H=cv.height;
+    const PAD={top:24,right:16,bottom:36,left:38};
+    const pW=W-PAD.left-PAD.right,pH=H-PAD.top-PAD.bottom;
+    ctx.clearRect(0,0,W,H);ctx.fillStyle="#050810";ctx.fillRect(0,0,W,H);
+    const all=[...responses,...customResponses];if(all.length<2)return;
+    const N=all.length;
+    // Grid
+    for(let i=0;i<=4;i++){const y=PAD.top+(pH/4)*i;ctx.strokeStyle=T.border;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+pW,y);ctx.stroke();ctx.fillStyle=T.muted;ctx.font="9px 'Share Tech Mono'";ctx.textAlign="right";ctx.fillText(`${100-i*25}`,PAD.left-4,y+3);}
+    const drawLine=(data,color,dashed=false)=>{const valid=data.filter(v=>v!==null);if(valid.length<1)return;ctx.strokeStyle=color;ctx.lineWidth=2;if(dashed)ctx.setLineDash([5,4]);else ctx.setLineDash([]);ctx.beginPath();let first=true;data.forEach((v,i)=>{if(v===null)return;const x=PAD.left+(i/Math.max(N-1,1))*pW;const y=PAD.top+(1-v/100)*pH;if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);});ctx.stroke();ctx.setLineDash([]);data.forEach((v,i)=>{if(v===null)return;const x=PAD.left+(i/Math.max(N-1,1))*pW;const y=PAD.top+(1-v/100)*pH;ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fill();});};
+    const vsaD=all.map(r=>r.vsaStress?Math.round(r.vsaStress.score*100):null);
+    const facD=all.map(r=>r.facialDeception?Math.round(r.facialDeception.score*100):null);
+    const hrD=all.map(r=>r.delta?Math.min(100,Math.max(0,50+(r.delta.hr||0)*4)):null);
+    const bsD=all.map(r=>r.bsScore?Math.round(r.bsScore*10):null);
+    drawLine(hrD,T.bad);drawLine(vsaD,T.teal);drawLine(facD,T.rose);drawLine(bsD,T.gold,true);
+    // X labels
+    ctx.fillStyle=T.muted;ctx.font="8px 'Share Tech Mono'";ctx.textAlign="center";
+    all.forEach((_,i)=>{const x=PAD.left+(i/Math.max(N-1,1))*pW;ctx.fillText(`Q${i+1}`,x,H-PAD.bottom+14);});
+    // Legend
+    const leg=[{c:T.bad,l:"HR"},{c:T.teal,l:"VSA"},{c:T.rose,l:"FACIAL"},{c:T.gold,l:"BS×10"}];
+    leg.forEach((l,i)=>{const lx=8+i*58;ctx.fillStyle=l.c;ctx.fillRect(lx,5,12,4);ctx.fillStyle=T.muted;ctx.textAlign="left";ctx.fillText(l.l,lx+15,10);});
+  },[responses,customResponses]);
+  return <canvas ref={cvRef} width={380} height={180} style={{width:"100%",height:180,borderRadius:6,display:"block"}}/>;
+}
+
+// WEB BLUETOOTH HOOK
+function useBluetoothSensors(){
+  const [btDevice,setBtDevice]=useState(null);
+  const [btConnected,setBtConnected]=useState(false);
+  const [btConnecting,setBtConnecting]=useState(false);
+  const [btData,setBtData]=useState({hr:null,hrv:null,spO2:null,skinTemp:null,respRate:null,battery:null});
+  const [btError,setBtError]=useState(null);
+  const [btDeviceName,setBtDeviceName]=useState(null);
+  const rrBuf=useRef([]);
+
+  const connect=async()=>{
+    setBtConnecting(true);setBtError(null);
+    try{
+      const device=await navigator.bluetooth.requestDevice({
+        acceptAllDevices:true,
+        optionalServices:["heart_rate","health_thermometer","0x1822","battery_service","device_information","0x180D","0x1809","0x180F"]
+      });
+      device.addEventListener("gattserverdisconnected",()=>{setBtConnected(false);setBtDeviceName(null);});
+      const server=await device.gatt.connect();
+      setBtDevice(device);setBtConnected(true);setBtDeviceName(device.name||"BT Device");
+
+      // Heart Rate Service (standard GATT 0x180D)
+      try{
+        const hrSvc=await server.getPrimaryService("heart_rate");
+        const hrChar=await hrSvc.getCharacteristic("heart_rate_measurement");
+        await hrChar.startNotifications();
+        hrChar.addEventListener("characteristicvaluechanged",e=>{
+          const v=e.target.value;const flags=v.getUint8(0);
+          const fmt=flags&0x1;let hr,off=1;
+          if(fmt===0){hr=v.getUint8(off++);}else{hr=v.getUint16(off,true);off+=2;}
+          // RR intervals
+          const rrPresent=(flags&0x10)!==0;
+          if(rrPresent){
+            while(off+1<v.byteLength){
+              const rr=v.getUint16(off,true)/1024*1000;off+=2;
+              rrBuf.current.push(rr);if(rrBuf.current.length>14)rrBuf.current.shift();
+            }
+          }
+          let hrv=null;
+          if(rrBuf.current.length>=4){
+            const diffs=[];for(let i=1;i<rrBuf.current.length;i++)diffs.push((rrBuf.current[i]-rrBuf.current[i-1])**2);
+            hrv=Math.round(Math.sqrt(diffs.reduce((a,b)=>a+b,0)/diffs.length));
+          }
+          setBtData(d=>({...d,hr,hrv:hrv||d.hrv}));
+        });
+      }catch(e){console.log("HR service:",e.message);}
+
+      // Health Thermometer (0x1809) - skin temp
+      try{
+        const tempSvc=await server.getPrimaryService("health_thermometer");
+        const tempChar=await tempSvc.getCharacteristic("temperature_measurement");
+        await tempChar.startNotifications();
+        tempChar.addEventListener("characteristicvaluechanged",e=>{
+          const v=e.target.value;const flags=v.getUint8(0);
+          const m=((v.getUint8(1))|(v.getUint8(2)<<8)|(v.getUint8(3)<<16));
+          const exp=v.getInt8(4);const tempC=m*Math.pow(10,exp);
+          const isFahr=(flags&0x1)!==0;
+          const tempF=isFahr?tempC:(tempC*9/5)+32;
+          setBtData(d=>({...d,skinTemp:+tempF.toFixed(1)}));
+        });
+      }catch{}
+
+      // Pulse Oximeter SpO2 (0x1822)
+      try{
+        const oxSvc=await server.getPrimaryService(0x1822);
+        const oxChar=await oxSvc.getCharacteristic(0x2A5F);
+        await oxChar.startNotifications();
+        oxChar.addEventListener("characteristicvaluechanged",e=>{
+          const v=e.target.value;
+          if(v.byteLength>=5){const spO2=v.getUint16(3,true)/10;setBtData(d=>({...d,spO2:+spO2.toFixed(1)}));}
+        });
+      }catch{}
+
+      // Battery level
+      try{
+        const batSvc=await server.getPrimaryService("battery_service");
+        const batChar=await batSvc.getCharacteristic("battery_level");
+        const val=await batChar.readValue();
+        setBtData(d=>({...d,battery:val.getUint8(0)}));
+      }catch{}
+
+    }catch(err){
+      if(!err.message.includes("cancelled"))setBtError("Could not connect: "+err.message);
+    }finally{setBtConnecting(false);}
+  };
+
+  const disconnect=()=>{
+    btDevice?.gatt?.disconnect();
+    setBtConnected(false);setBtDevice(null);setBtDeviceName(null);
+    setBtData({hr:null,hrv:null,spO2:null,skinTemp:null,respRate:null,battery:null});
+    rrBuf.current=[];
+  };
+
+  const supported=typeof navigator!=="undefined"&&"bluetooth" in navigator;
+  return{btConnected,btConnecting,btData,btError,btDeviceName,connect,disconnect,supported};
+}
+
+// FACIAL ANALYSIS ENGINE
+class FacialAnalysisEngine{
+  constructor(){this.baseline=null;this.frameHistory=[];this.blinkHistory=[];this.lastFrameData=null;this.blinkState="open";this.blinkStart=0;this.respHistory=[];this.lastChestBrightness=null;}
+  detectFaceRegion(d,w,h){const data=d.data;let sp=0,cx=0,cy=0,minX=w,maxX=0,minY=h,maxY=0;for(let y=0;y<h;y++){for(let x=0;x<w;x++){const i=(y*w+x)*4;const r=data[i],g=data[i+1],b=data[i+2];if(r>60&&g>40&&b>20&&r>g&&r>b&&Math.abs(r-g)>15&&r-b>20&&r<250){sp++;cx+=x;cy+=y;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}}}if(sp<100)return null;return{centerX:cx/sp,centerY:cy/sp,width:maxX-minX,height:maxY-minY,minX,maxX,minY,maxY,skinPixels:sp,confidence:Math.min(sp/(w*h*0.15),1)};}
+  analyzeEyeRegion(d,w,h,face){if(!face)return{avgBrightness:0.5,gazeX:0.5,gazeY:0.3};const data=d.data;const eT=Math.max(0,Math.round(face.minY+face.height*0.1));const eB=Math.min(h,Math.round(face.minY+face.height*0.45));let bright=0,cnt=0,dCX=0,dCY=0,dT=0;for(let y=eT;y<eB;y++){for(let x=face.minX;x<face.maxX;x++){const i=(y*w+x)*4;const lum=data[i]*0.299+data[i+1]*0.587+data[i+2]*0.114;bright+=lum;cnt++;if(lum<55){const wt=(55-lum)/55;dCX+=x*wt;dCY+=y*wt;dT+=wt;}}}const avg=cnt>0?bright/cnt:128;const gX=dT>10?(dCX/dT-face.minX)/Math.max(face.width,1):0.5;const gY=dT>10?(dCY/dT-eT)/Math.max(eB-eT,1):0.5;return{avgBrightness:avg/255,gazeX:Math.max(0,Math.min(1,gX)),gazeY:Math.max(0,Math.min(1,gY))};}
+  // Respiratory tracking: detect chest/shoulder movement in lower image region
+  trackRespiration(d,w,h,ts){const data=d.data;let sum=0,cnt=0;const startY=Math.round(h*0.75);for(let y=startY;y<h;y++){for(let x=0;x<w;x++){const i=(y*w+x)*4;sum+=data[i]*0.299+data[i+1]*0.587+data[i+2]*0.114;cnt++;}}const brightness=cnt>0?sum/cnt:128;if(this.lastChestBrightness!==null){const delta=Math.abs(brightness-this.lastChestBrightness);this.respHistory.push({ts,delta});}this.lastChestBrightness=brightness;this.respHistory=this.respHistory.filter(r=>r.ts>ts-30000);// Estimate breaths per minute from peaks
+    const recent=this.respHistory.slice(-90);if(recent.length<10)return null;const avg=recent.reduce((a,b)=>a+b.delta,0)/recent.length;let peaks=0;for(let i=1;i<recent.length-1;i++){if(recent[i].delta>avg*1.5&&recent[i].delta>recent[i-1].delta&&recent[i].delta>recent[i+1].delta)peaks++;}return Math.round(peaks*2);}// 15fps * 2 = per minute approx
+  computeMotion(d,w,h){const data=d.data;if(!this.lastFrameData||this.lastFrameData.length!==data.length){this.lastFrameData=new Uint8Array(data);return 0;}let diff=0,cnt=0;for(let i=0;i<data.length;i+=16){diff+=Math.abs(data[i]-this.lastFrameData[i])+Math.abs(data[i+1]-this.lastFrameData[i+1])+Math.abs(data[i+2]-this.lastFrameData[i+2]);cnt+=3;}this.lastFrameData=new Uint8Array(data);return cnt>0?diff/cnt/255:0;}
+  detectBlink(eye,ts){const isClosed=eye.avgBrightness<0.38;if(isClosed&&this.blinkState==="open"){this.blinkState="closed";this.blinkStart=ts;}else if(!isClosed&&this.blinkState==="closed"){const dur=ts-this.blinkStart;if(dur>50&&dur<600)this.blinkHistory.push({ts,duration:dur,prolonged:dur>250});this.blinkState="open";}this.blinkHistory=this.blinkHistory.filter(b=>b.ts>ts-60000);const rec=this.blinkHistory.filter(b=>b.ts>ts-30000);return{blinkRate:rec.length*2,avgDuration:rec.length>0?rec.reduce((a,b)=>a+b.duration,0)/rec.length:150,prolongedBlinks:rec.filter(b=>b.prolonged).length};}
+  classifyGaze(x,y){if(x<0.35)return"LEFT";if(x>0.65)return"RIGHT";if(y<0.3)return"UP";if(y>0.7)return"DOWN";return"CENTER";}
+  processFrame(imageData,w,h,ts){const face=this.detectFaceRegion(imageData,w,h);const eye=this.analyzeEyeRegion(imageData,w,h,face);const motion=this.computeMotion(imageData,w,h);const blink=this.detectBlink(eye,ts);const gaze=this.classifyGaze(eye.gazeX,eye.gazeY);const respRate=this.trackRespiration(imageData,w,h,ts);this.frameHistory.push({ts,face:!!face,faceConf:face?.confidence||0,eye,motion,blink,gaze,respRate});if(this.frameHistory.length>300)this.frameHistory.shift();return{face,eye,motion,blink,gaze,faceDetected:!!face&&(face.confidence||0)>0.1,respRate};}
+  captureWindow(ms=5000){const now=Date.now();const frames=this.frameHistory.filter(f=>f.ts>now-ms);if(frames.length<3)return null;const gazeFrames=frames.map(f=>f.gaze);const gazeCounts={};gazeFrames.forEach(g=>{gazeCounts[g]=(gazeCounts[g]||0)+1;});const dominantGaze=Object.entries(gazeCounts).sort((a,b)=>b[1]-a[1])[0]?.[0]||"CENTER";const gazeAversion=1-(gazeCounts["CENTER"]||0)/frames.length;const avgMotion=frames.reduce((a,f)=>a+f.motion,0)/frames.length;const avgBlinkRate=frames.map(f=>f.blink.blinkRate).reduce((a,b)=>a+b,0)/frames.length;const avgBlinkDuration=frames.map(f=>f.blink.avgDuration).reduce((a,b)=>a+b,0)/frames.length;const prolongedBlinks=frames.map(f=>f.blink.prolongedBlinks).reduce((a,b)=>a+b,0);let shifts=0;for(let i=1;i<gazeFrames.length;i++){if(gazeFrames[i]!==gazeFrames[i-1])shifts++;}const respRates=frames.map(f=>f.respRate).filter(r=>r!==null);const avgRespRate=respRates.length>0?Math.round(respRates.reduce((a,b)=>a+b,0)/respRates.length):null;return{dominantGaze,gazeAversion,avgMotion,avgBlinkRate,avgBlinkDuration,prolongedBlinks,gazeShiftRate:shifts/frames.length,avgRespRate,frameCount:frames.length};}
+  setBaseline(w){this.baseline={...w};}
+  deceptionScore(captured,baseline){if(!captured||!baseline)return{score:0.5,level:"UNKNOWN",indicators:[]};const ind=[];let score=0;const gd=captured.gazeAversion-baseline.gazeAversion;if(gd>0.2){score+=0.25*Math.min(gd/0.5,1);ind.push({name:"GAZE AVERSION",val:`+${(gd*100).toFixed(0)}%`,flag:true});}else ind.push({name:"GAZE AVERSION",val:`${(captured.gazeAversion*100).toFixed(0)}%`,flag:false});const bd=Math.abs(captured.avgBlinkRate-baseline.avgBlinkRate);if(bd>8){score+=0.20*Math.min(bd/20,1);ind.push({name:"BLINK RATE",val:`${captured.avgBlinkRate.toFixed(0)}/min`,flag:true});}else ind.push({name:"BLINK RATE",val:`${captured.avgBlinkRate.toFixed(0)}/min`,flag:false});if(captured.prolongedBlinks>(baseline.prolongedBlinks+1)){score+=0.15;ind.push({name:"PROLONGED BLINKS",val:`${captured.prolongedBlinks}`,flag:true});}else ind.push({name:"PROLONGED BLINKS",val:`${captured.prolongedBlinks}`,flag:false});const md=captured.avgMotion-baseline.avgMotion;if(md>0.015){score+=0.18*Math.min(md/0.04,1);ind.push({name:"MICRO-MOVEMENT",val:`+${(md*100).toFixed(1)}%`,flag:true});}else ind.push({name:"MICRO-MOVEMENT",val:`${(captured.avgMotion*100).toFixed(1)}%`,flag:false});const sd=captured.gazeShiftRate-baseline.gazeShiftRate;if(sd>0.1){score+=0.12*Math.min(sd/0.3,1);ind.push({name:"GAZE SHIFTS",val:`+${(sd*100).toFixed(0)}%`,flag:true});}else ind.push({name:"GAZE SHIFTS",val:`${(captured.gazeShiftRate*100).toFixed(0)}%`,flag:false});if(captured.avgRespRate&&baseline.avgRespRate){const rd=Math.abs(captured.avgRespRate-baseline.avgRespRate);if(rd>4){score+=0.10*Math.min(rd/10,1);ind.push({name:"RESP RATE",val:`${captured.avgRespRate}/min Δ${rd}`,flag:true});}else ind.push({name:"RESP RATE",val:`${captured.avgRespRate}/min`,flag:false});}const n=Math.min(score,1);return{score:n,level:n>0.6?"HIGH":n>0.3?"MODERATE":"LOW",indicators:ind};}
+}
+
+function useFacialAnalysis(active){
+  const videoRef=useRef(null);const streamRef=useRef(null);const engineRef=useRef(new FacialAnalysisEngine());const animRef=useRef(null);const overlayCanvasRef=useRef(null);
+  const [live,setLive]=useState({faceDetected:false,gazeDir:"CENTER",blinkRate:0,avgBlinkDuration:150,motionScore:0,deceptionScore:0,deceptionLevel:"UNKNOWN",deceptionIndicators:[],prolongedBlinks:0,gazeAversion:0,faceConfidence:0,respRate:null});
+  const [error,setError]=useState(null);const [baselineSet,setBaselineSet]=useState(false);
+  useEffect(()=>{
+    if(!active)return;let mounted=true;
+    const video=document.createElement("video");video.setAttribute("playsinline",true);video.muted=true;videoRef.current=video;
+    const canvas=document.createElement("canvas");canvas.width=160;canvas.height=120;
+    navigator.mediaDevices?.getUserMedia({video:{facingMode:"user",width:320,height:240,frameRate:15}}).then(async stream=>{
+      if(!mounted){stream.getTracks().forEach(t=>t.stop());return;}streamRef.current=stream;video.srcObject=stream;await video.play();
+      const ctx=canvas.getContext("2d");const eng=engineRef.current;
+      const loop=()=>{if(!mounted)return;const now=Date.now();try{ctx.drawImage(video,0,0,160,120);const imageData=ctx.getImageData(0,0,160,120);const result=eng.processFrame(imageData,160,120,now);const captured=eng.captureWindow(5000);const dec=eng.deceptionScore(captured,eng.baseline);setLive({faceDetected:result.faceDetected,gazeDir:result.gaze,blinkRate:result.blink.blinkRate,avgBlinkDuration:result.blink.avgDuration,motionScore:result.motion,deceptionScore:dec.score,deceptionLevel:dec.level,deceptionIndicators:dec.indicators||[],prolongedBlinks:result.blink.prolongedBlinks,gazeAversion:captured?.gazeAversion||0,faceConfidence:result.face?.confidence||0,respRate:result.respRate});if(overlayCanvasRef.current&&result.face)drawOverlay(overlayCanvasRef.current,result,320,240);}catch{}animRef.current=requestAnimationFrame(loop);};animRef.current=requestAnimationFrame(loop);
+    }).catch(()=>setError("Front camera unavailable"));
+    return()=>{mounted=false;cancelAnimationFrame(animRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());};
+  },[active]);
+  const drawOverlay=(canvas,result,w,h)=>{const ctx=canvas.getContext("2d");ctx.clearRect(0,0,w,h);if(!result.face)return;const f=result.face;const sx=w/160,sy=h/120;ctx.strokeStyle=result.faceDetected?"#00d4ff":"#ff8c3a";ctx.lineWidth=1.5;ctx.strokeRect(f.minX*sx,f.minY*sy,f.width*sx,f.height*sy);const eT=(f.minY+f.height*0.1)*sy;const eB=(f.minY+f.height*0.45)*sy;ctx.strokeStyle="#00e5cc"+"aa";ctx.lineWidth=1;ctx.strokeRect(f.minX*sx,eT,f.width*sx,eB-eT);const gx=(f.minX+result.eye.gazeX*f.width)*sx;const gy=((f.minY+f.height*0.28)+result.eye.gazeY*(f.height*0.35))*sy;ctx.strokeStyle=result.gaze==="CENTER"?"#00ff88cc":"#ff8c3acc";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(gx-8,gy);ctx.lineTo(gx+8,gy);ctx.moveTo(gx,gy-8);ctx.lineTo(gx,gy+8);ctx.stroke();[[f.minX,f.minY],[f.maxX,f.minY],[f.minX,f.maxY],[f.maxX,f.maxY]].forEach(([x,y])=>{const sx2=x*sx,sy2=y*sy;const dx=sx2<w/2?8:-8,dy=sy2<h/2?8:-8;ctx.strokeStyle="#00d4ff";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx2,sy2+dy);ctx.lineTo(sx2,sy2);ctx.lineTo(sx2+dx,sy2);ctx.stroke();});};
+  const captureWindow=useCallback((ms=6000)=>engineRef.current.captureWindow(ms),[]);
+  const setBaseline=useCallback(()=>{const w=engineRef.current.captureWindow(10000);if(w){engineRef.current.setBaseline(w);setBaselineSet(true);}return w;},[]);
+  const getDeceptionForCapture=useCallback((c)=>engineRef.current.deceptionScore(c,engineRef.current.baseline),[]);
+  return{live,error,baselineSet,captureWindow,setBaseline,getDeceptionForCapture,overlayCanvasRef,videoRef};
+}
+
+// VOICE STRESS ANALYZER (with speaking rate + micro-pause)
+class VoiceStressAnalyzer{
+  constructor(){this.baseline=null;this.pauseBuffer=[];this.wordCountHistory=[];}
+  detectPitch(buf,sr){const S=buf.length,M=Math.floor(S/2);let rms=0;for(let i=0;i<S;i++)rms+=buf[i]*buf[i];rms=Math.sqrt(rms/S);if(rms<0.01)return{pitch:0,voiced:false,rms};let bo=-1,bc=0,lc=1;for(let o=4;o<M;o++){let c=0;for(let i=0;i<M;i++)c+=Math.abs(buf[i]-buf[i+o]);c=1-c/M;if(c>0.9&&c>lc){bc=c;bo=o;break;}if(c>bc){bc=c;bo=o;}lc=c;}if(bc>0.5&&bo>0)return{pitch:sr/bo,voiced:true,rms};return{pitch:0,voiced:false,rms};}
+  spectralCentroid(f){let ws=0,s=0;for(let i=0;i<f.length;i++){const m=f[i]/255;ws+=i*m;s+=m;}return s>0?ws/s:0;}
+  spectralTilt(f){const mid=Math.floor(f.length/4);let lo=0,hi=0;for(let i=0;i<mid;i++)lo+=f[i];for(let i=mid;i<f.length;i++)hi+=f[i];return(hi/(f.length-mid))>0?(lo/mid)/(hi/(f.length-mid)):1;}
+  estimateHNR(buf){const S=Math.min(buf.length,512);let ac0=0,peak=0;for(let i=0;i<S;i++)ac0+=buf[i]*buf[i];for(let lag=20;lag<S/2;lag++){let ac=0;for(let i=0;i<S-lag;i++)ac+=buf[i]*buf[i+lag];if(ac>peak)peak=ac;}if(!ac0)return 0;const r=peak/ac0;return(r>0&&r<1)?10*Math.log10(r/(1-r)):0;}
+  computeJitter(ph){if(ph.length<4)return 0;const v=ph.filter(p=>p.voiced&&p.pitch>60&&p.pitch<500);if(v.length<3)return 0;let d=0;for(let i=1;i<v.length;i++)d+=Math.abs(v[i].pitch-v[i-1].pitch);const avg=v.reduce((a,b)=>a+b.pitch,0)/v.length;return avg>0?(d/(v.length-1))/avg:0;}
+  computeShimmer(rh){if(rh.length<4)return 0;let d=0;for(let i=1;i<rh.length;i++)d+=Math.abs(rh[i]-rh[i-1]);const avg=rh.reduce((a,b)=>a+b,0)/rh.length;return avg>0?(d/(rh.length-1))/avg:0;}
+  pauseRatio(rh,t=0.015){if(!rh.length)return 0;return rh.filter(r=>r<t).length/rh.length;}
+  // Micro-pause detection: silence gaps 300ms-2000ms within speech
+  detectMicroPauses(rh){const SILENCE=0.012;let count=0;let silLen=0;for(let i=0;i<rh.length;i++){if(rh[i]<SILENCE){silLen++;}else{if(silLen>=9&&silLen<=60)count++;// 9-60 frames @30fps = 300ms-2000ms
+      silLen=0;}}return count;}
+  summarize(ph,rh,fh){const v=ph.filter(p=>p.voiced&&p.pitch>60&&p.pitch<600);const ap=v.length>0?v.reduce((a,b)=>a+b.pitch,0)/v.length:0;const pv=v.length>1?Math.sqrt(v.reduce((a,b)=>a+(b.pitch-ap)**2,0)/v.length):0;const voicedFrames=ph.filter(p=>p.voiced).length;const speakingRate=ph.length>0?(voicedFrames/ph.length)*30:0;// voiced frames per second
+    const microPauses=this.detectMicroPauses(rh);return{avgPitch:ap,pitchVariance:pv,jitter:this.computeJitter(ph),shimmer:this.computeShimmer(rh),hnr:ph.length>0?ph.reduce((a,b)=>a+(b.hnr||0),0)/ph.length:0,pauseRatio:this.pauseRatio(rh),centroid:fh.length>0?fh.reduce((a,b)=>a+b.c,0)/fh.length:0,spectralTilt:fh.length>0?fh.reduce((a,b)=>a+b.t,0)/fh.length:1,speakingRate:+speakingRate.toFixed(1),microPauses,sampleCount:ph.length};}
+  stressScore(feat,base){if(!base)return{score:0.5,level:"UNKNOWN",indicators:[]};const ind=[];let score=0;const jd=base.jitter>0?(feat.jitter-base.jitter)/base.jitter:0;if(jd>0.3){score+=0.20*Math.min(jd,2);ind.push({name:"JITTER",val:`+${(jd*100).toFixed(0)}%`,stress:true});}else ind.push({name:"JITTER",val:`${(jd*100).toFixed(0)}%`,stress:false});const sd=base.shimmer>0?(feat.shimmer-base.shimmer)/base.shimmer:0;if(sd>0.25){score+=0.16*Math.min(sd,2);ind.push({name:"SHIMMER",val:`+${(sd*100).toFixed(0)}%`,stress:true});}else ind.push({name:"SHIMMER",val:`${(sd*100).toFixed(0)}%`,stress:false});const hd=base.hnr-feat.hnr;if(hd>3){score+=0.16*Math.min(hd/10,1);ind.push({name:"HNR",val:`-${hd.toFixed(1)}dB`,stress:true});}else ind.push({name:"HNR",val:`${hd.toFixed(1)}dB`,stress:false});const pvd=base.pitchVariance>0?Math.abs(feat.pitchVariance-base.pitchVariance)/base.pitchVariance:0;if(pvd>0.4){score+=0.14*Math.min(pvd,1.5);ind.push({name:"PITCH VAR",val:`+${(pvd*100).toFixed(0)}%`,stress:true});}else ind.push({name:"PITCH VAR",val:`${(pvd*100).toFixed(0)}%`,stress:false});const pd=base.pauseRatio>0?(feat.pauseRatio-base.pauseRatio)/Math.max(base.pauseRatio,0.05):feat.pauseRatio*5;if(pd>0.5){score+=0.10*Math.min(pd,1.5);ind.push({name:"PAUSES",val:`+${(pd*100).toFixed(0)}%`,stress:true});}// Speaking rate drop
+    if(base.speakingRate>0){const srd=(base.speakingRate-feat.speakingRate)/base.speakingRate;if(srd>0.3){score+=0.12*Math.min(srd,1);ind.push({name:"SPEAK RATE",val:`-${(srd*100).toFixed(0)}%`,stress:true});}else ind.push({name:"SPEAK RATE",val:`${(srd*100).toFixed(0)}%`,stress:false});}// Micro-pauses
+    if(feat.microPauses>(base.microPauses||0)+2){score+=0.12;ind.push({name:"MICRO-PAUSES",val:`${feat.microPauses} detected`,stress:true});}const n=Math.min(score,1);return{score:n,level:n>0.65?"HIGH":n>0.35?"MODERATE":"LOW",indicators:ind};}
+  setBaseline(f){this.baseline={...f};}
+}
+
+function useVoiceStress(active){
+  const ctxRef=useRef(null);const anRef=useRef(null);const anFRef=useRef(null);const streamRef=useRef(null);const engRef=useRef(new VoiceStressAnalyzer());const phRef=useRef([]);const rhRef=useRef([]);const fhRef=useRef([]);const animRef=useRef(null);
+  const [live,setLive]=useState({pitch:0,rms:0,jitter:0,shimmer:0,hnr:0,stressScore:0,stressLevel:"UNKNOWN",speakingRate:0,microPauses:0});
+  const [baselineSet,setBaselineSet]=useState(false);
+  useEffect(()=>{if(!active)return;let mounted=true;navigator.mediaDevices?.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,sampleRate:44100}}).then(stream=>{if(!mounted){stream.getTracks().forEach(t=>t.stop());return;}streamRef.current=stream;const ctx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:44100});ctxRef.current=ctx;const src=ctx.createMediaStreamSource(stream);const an=ctx.createAnalyser();an.fftSize=2048;src.connect(an);anRef.current=an;const anF=ctx.createAnalyser();anF.fftSize=1024;src.connect(anF);anFRef.current=anF;engRef.current=new VoiceStressAnalyzer();const tb=new Float32Array(an.fftSize);const fb=new Uint8Array(anF.frequencyBinCount);const loop=()=>{if(!mounted)return;an.getFloatTimeDomainData(tb);anF.getByteFrequencyData(fb);const eng=engRef.current;const{pitch,voiced,rms}=eng.detectPitch(tb,ctx.sampleRate);const hnr=eng.estimateHNR(tb);const c=eng.spectralCentroid(fb);const t2=eng.spectralTilt(fb);phRef.current.push({pitch,voiced,rms,hnr});rhRef.current.push(rms);fhRef.current.push({c,t:t2});if(phRef.current.length>120)phRef.current.shift();if(rhRef.current.length>120)rhRef.current.shift();if(fhRef.current.length>120)fhRef.current.shift();const feat=eng.summarize(phRef.current,rhRef.current,fhRef.current);const stress=eng.stressScore(feat,eng.baseline);setLive({pitch:Math.round(pitch),rms:+rms.toFixed(4),jitter:+feat.jitter.toFixed(4),shimmer:+feat.shimmer.toFixed(4),hnr:+feat.hnr.toFixed(2),stressScore:+stress.score.toFixed(3),stressLevel:stress.level,stressIndicators:stress.indicators||[],speakingRate:feat.speakingRate,microPauses:feat.microPauses,avgPitch:+feat.avgPitch.toFixed(1),pitchVariance:+feat.pitchVariance.toFixed(2)});animRef.current=requestAnimationFrame(loop);};animRef.current=requestAnimationFrame(loop);}).catch(()=>{});return()=>{mounted=false;cancelAnimationFrame(animRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());ctxRef.current?.close();};
+  },[active]);
+  const captureFeatures=useCallback((ms=3000)=>{const fps=30,frames=Math.floor((ms/1000)*fps);return engRef.current.summarize(phRef.current.slice(-frames),rhRef.current.slice(-frames),fhRef.current.slice(-frames));},[]);
+  const setBaseline=useCallback(()=>{const f=engRef.current.summarize(phRef.current,rhRef.current,fhRef.current);engRef.current.setBaseline(f);setBaselineSet(true);return f;},[]);
+  const getStressForCapture=useCallback((feat)=>engRef.current.stressScore(feat,engRef.current.baseline),[]);
+  return{live,baselineSet,captureFeatures,setBaseline,getStressForCapture};
+}
+
+// PPG (back camera)
+function usePPG(active){
+  const streamRef=useRef(null);const rrRef=useRef([]);const sampRef=useRef([]);const [hr,setHr]=useState(null);const [hrv,setHrv]=useState(null);const [fingerDetected,setFingerDetected]=useState(false);const animRef=useRef(null);const lastPeakRef=useRef(0);
+  useEffect(()=>{if(!active)return;let mounted=true;const cv=document.createElement("canvas");cv.width=16;cv.height=16;const ctx=cv.getContext("2d");navigator.mediaDevices?.getUserMedia({video:{facingMode:"environment",width:64,height:64}}).then(async stream=>{if(!mounted){stream.getTracks().forEach(t=>t.stop());return;}streamRef.current=stream;const track=stream.getVideoTracks()[0];try{await track.applyConstraints({advanced:[{torch:true}]});}catch{}const video=document.createElement("video");video.srcObject=stream;video.setAttribute("playsinline",true);video.muted=true;await video.play();const loop=()=>{if(!mounted)return;ctx.drawImage(video,0,0,16,16);const d=ctx.getImageData(0,0,16,16).data;let r=0,g=0;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];}const px=d.length/4,avgR=r/px,avgG=g/px;const finger=avgR>140&&avgG<110;setFingerDetected(finger);if(finger){const now=Date.now();sampRef.current.push({t:now,v:avgR/255});if(sampRef.current.length>200)sampRef.current.shift();const s=sampRef.current;if(s.length>=60){const w=s.slice(-60);const avg=w.reduce((a,b)=>a+b.v,0)/w.length;const std=Math.sqrt(w.reduce((a,b)=>a+(b.v-avg)**2,0)/w.length);const p=w[w.length-4],p2=w[w.length-2],l=w[w.length-1];if(p.v>avg+std*0.35&&p.v>l.v&&p.v>p2.v&&p2.v<p.v){const gap=now-lastPeakRef.current;if(gap>350&&gap<1500){rrRef.current.push(gap);if(rrRef.current.length>14)rrRef.current.shift();const rec=rrRef.current.slice(-6);const avgRR=rec.reduce((a,b)=>a+b,0)/rec.length;const bpm=Math.round(60000/avgRR);if(bpm>=40&&bpm<=200)setHr(bpm);if(rrRef.current.length>=4){const diffs=[];for(let i=1;i<rrRef.current.length;i++)diffs.push((rrRef.current[i]-rrRef.current[i-1])**2);setHrv(Math.round(Math.sqrt(diffs.reduce((a,b)=>a+b,0)/diffs.length)));}}lastPeakRef.current=now;}}}else{sampRef.current=[];rrRef.current=[];}animRef.current=requestAnimationFrame(loop);};animRef.current=requestAnimationFrame(loop);}).catch(()=>{});return()=>{mounted=false;cancelAnimationFrame(animRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());};
+  },[active]);
+  return{hr,hrv,fingerDetected};
+}
+
+// TTS + SPEECH
+function getVoice(){const v=window.speechSynthesis?.getVoices()||[];return v.find(x=>/Google US English|Alex|Daniel|Samantha/i.test(x.name)&&x.lang.startsWith("en"))||v.find(x=>x.lang.startsWith("en-US"))||v[0]||null;}
+function speak(text,opts={}){return new Promise(resolve=>{if(!window.speechSynthesis){resolve();return;}window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.rate=opts.rate||0.9;u.pitch=opts.pitch||0.95;u.volume=opts.volume||1;if(opts.voice)u.voice=opts.voice;u.onend=resolve;u.onerror=resolve;window.speechSynthesis.speak(u);});}
+function parseYesNo(text){const t=text.toLowerCase();if(/\b(yes|yeah|yep|correct|affirmative|true|right|yup|sure|absolutely|definitely|positive|certainly)\b/.test(t))return"Yes";if(/\b(no|nope|negative|false|never|nah|incorrect|wrong|deny|denied|not really|not at all)\b/.test(t))return"No";return null;}
+
+// VOICE STATUS BAR
+function VoiceStatus({speaking,listening,transcript,pitch,stressLevel,speakingRate,microPauses}){
+  const bars=Array(12).fill(0);const bc=speaking?T.purple:listening?T.accent:T.muted;
+  return(
+    <div style={{background:T.panel,border:`1px solid ${speaking?T.purple+"77":listening?T.accent+"77":T.border}`,borderRadius:9,padding:"9px 13px",marginBottom:10,animation:speaking?"speakRing 1.6s infinite":listening?"listenRing 1.6s infinite":"none"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:2,height:22,flexShrink:0}}>{bars.map((_,i)=><div key={i} style={{width:3,borderRadius:2,background:bc,height:"100%",transformOrigin:"center",animation:(speaking||listening)?`voiceBar ${0.35+(i%5)*0.12}s ease-in-out ${i*0.05}s infinite`:"none",transform:(speaking||listening)?undefined:"scaleY(0.2)"}}/>)}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:2,flexWrap:"wrap"}}>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:speaking?T.purple:listening?T.accent:T.muted}}>{speaking?"▶ SPEAKING":listening?"⬤ LISTENING":"○ STANDBY"}</div>
+            {listening&&pitch>0&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.teal}}>F0:{pitch}Hz</div>}
+            {listening&&stressLevel&&stressLevel!=="UNKNOWN"&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:stressLevel==="HIGH"?T.bad:stressLevel==="MODERATE"?T.warn:T.good,background:(stressLevel==="HIGH"?T.bad:stressLevel==="MODERATE"?T.warn:T.good)+"22",padding:"1px 5px",borderRadius:7}}>VSA:{stressLevel}</div>}
+            {speakingRate>0&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted}}>SPK:{speakingRate.toFixed(0)}fps</div>}
+            {microPauses>0&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.warn}}>PAUSES:{microPauses}</div>}
+          </div>
+          <div style={{fontSize:12,color:transcript?T.white:T.muted,fontStyle:transcript?"normal":"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{transcript||(listening?"Listening…":speaking?"Speaking…":"Voice ready")}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// PPG GUIDE
+function PPGGuide({fingerDetected,hr,hrv}){
+  return(
+    <div style={{background:fingerDetected?"#001a0d":"#160900",border:`1px solid ${fingerDetected?T.good:T.warn}44`,borderRadius:8,padding:"8px 12px",marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{fontSize:18,animation:fingerDetected?"hbeat 0.9s infinite":"none"}}>💓</div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:fingerDetected?T.good:T.warn,marginBottom:1}}>{fingerDetected?"PPG ACTIVE — REAR CAMERA":"PLACE FINGER ON REAR CAMERA"}</div>
+          <div style={{fontSize:11,color:T.text}}>{fingerDetected?"Cardiac rhythm captured via rPPG.":"Cover rear lens fully. Hold firm. Flash on."}</div>
+        </div>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:16,color:fingerDetected?T.good:T.muted,lineHeight:1}}>{hr||"--"}</div>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted}}>BPM</div>
+          {hrv!=null&&<><div style={{fontFamily:"'Share Tech Mono'",fontSize:11,color:T.accent}}>{hrv}</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted}}>HRV</div></>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// BLUETOOTH PANEL
+function BluetoothPanel({bt}){
+  const {btConnected,btConnecting,btData,btError,btDeviceName,connect,disconnect,supported}=bt;
+  return(
+    <div style={{background:btConnected?"#001a10":"#0a0f18",border:`1px solid ${btConnected?T.mint+"66":T.border}`,borderRadius:9,padding:"10px 13px",marginBottom:10,animation:btConnected?"btPulse 3s ease infinite":"none"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{fontSize:20}}>📡</div>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:btConnected?T.mint:T.muted,letterSpacing:"0.1em"}}>{btConnected?`CONNECTED: ${btDeviceName||"BT DEVICE"}`:"BLUETOOTH SENSORS"}</div>
+            {supported&&(btConnected?<button onClick={disconnect} style={{background:"none",border:`1px solid ${T.bad}55`,color:T.bad,fontSize:9,padding:"3px 9px",borderRadius:4,cursor:"pointer",fontFamily:"'Share Tech Mono'"}}>DISCONNECT</button>:<button onClick={connect} disabled={btConnecting} style={{background:btConnecting?"none":T.mint+"22",border:`1px solid ${T.mint}55`,color:T.mint,fontSize:9,padding:"3px 9px",borderRadius:4,cursor:btConnecting?"not-allowed":"pointer",fontFamily:"'Share Tech Mono'"}}>{btConnecting?"SCANNING…":"CONNECT"}</button>)}
+            {!supported&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.muted}}>BT NOT SUPPORTED</div>}
+          </div>
+          {btConnected?(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4}}>
+              {[{l:"HR",v:btData.hr||"--",c:T.bad},{l:"HRV",v:btData.hrv||"--",c:T.gold},{l:"SpO2",v:btData.spO2?btData.spO2+"%":"--",c:T.accent},{l:"TEMP",v:btData.skinTemp?btData.skinTemp+"°F":"--",c:T.warn},{l:"RESP",v:btData.respRate||"--",c:T.teal}].map(s=>(
+                <div key={s.l} style={{background:T.panel2,borderRadius:4,padding:"4px 5px",textAlign:"center"}}>
+                  <div style={{fontFamily:"'Share Tech Mono'",fontSize:11,color:s.c}}>{s.v}</div>
+                  <div style={{fontFamily:"'Share Tech Mono'",fontSize:6,color:T.muted}}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          ):(
+            <div style={{fontSize:11,color:T.muted}}>Supports Polar H10, Wellue O2Ring, Garmin, and standard HR monitors</div>
+          )}
+          {btError&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.warn,marginTop:4}}>{btError}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// FACIAL MINI
+function FacialMini({facial}){
+  const overlayRef=useRef(null);const mirrorRef=useRef(null);
+  useEffect(()=>{if(facial.overlayCanvasRef)facial.overlayCanvasRef.current=overlayRef.current;},[facial]);
+  useEffect(()=>{if(!facial.videoRef?.current||!mirrorRef.current)return;const video=facial.videoRef.current;let aid;const draw=()=>{if(!mirrorRef.current)return;const ctx=mirrorRef.current.getContext("2d");ctx.save();ctx.scale(-1,1);ctx.drawImage(video,-mirrorRef.current.width,0,mirrorRef.current.width,mirrorRef.current.height);ctx.restore();aid=requestAnimationFrame(draw);};aid=requestAnimationFrame(draw);return()=>cancelAnimationFrame(aid);},[facial.videoRef]);
+  const dec=facial.live;const dc=dec.deceptionLevel==="HIGH"?T.bad:dec.deceptionLevel==="MODERATE"?T.warn:T.good;
+  return(
+    <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:9,padding:10,marginBottom:10}}>
+      <div style={{display:"flex",gap:10}}>
+        <div style={{position:"relative",borderRadius:6,overflow:"hidden",width:120,height:90,flexShrink:0,background:"#000"}}>
+          <canvas ref={mirrorRef} width={320} height={240} style={{width:"100%",height:"100%",display:"block",transform:"scaleX(-1)"}}/>
+          <canvas ref={overlayRef} width={320} height={240} style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}}/>
+          <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,0.03) 2px,rgba(0,212,255,0.03) 4px)",pointerEvents:"none"}}/>
+          <div style={{position:"absolute",bottom:4,left:5,fontFamily:"'Share Tech Mono'",fontSize:7,color:dc}}>{dec.deceptionLevel}</div>
+          {dec.respRate&&<div style={{position:"absolute",top:4,right:5,fontFamily:"'Share Tech Mono'",fontSize:7,color:T.teal}}>{dec.respRate}/m</div>}
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.rose,letterSpacing:"0.1em",marginBottom:6}}>FACIAL ANALYSIS</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+            {[{l:"GAZE",v:dec.gazeDir,c:dec.gazeDir==="CENTER"?T.good:T.warn},{l:"BLINK",v:`${dec.blinkRate?.toFixed(0)||0}/m`,c:T.rose},{l:"MOVE",v:`${(dec.motionScore*100).toFixed(1)}%`,c:dec.motionScore>0.04?T.warn:T.good},{l:"RESP",v:dec.respRate?`${dec.respRate}/m`:"--",c:T.teal}].map(s=>(
+              <div key={s.l} style={{background:T.panel2,borderRadius:4,padding:"4px 6px"}}>
+                <div style={{fontFamily:"'Share Tech Mono'",fontSize:6,color:T.muted}}>{s.l}</div>
+                <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:s.c}}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// QUESTION TEMPLATES
+const TEMPLATES={
+  relationship:[
+    {id:"rt1",text:"Have you been completely faithful in your current relationship?",category:"relevant"},
+    {id:"rt2",text:"Have you hidden any significant financial matters from your partner?",category:"relevant"},
+    {id:"rt3",text:"Have you communicated with an ex-partner in a way you kept secret?",category:"relevant"},
+    {id:"rt4",text:"Have you ever lied about your whereabouts to your partner?",category:"relevant"},
+    {id:"rt5",text:"Do you have romantic feelings for someone outside your relationship?",category:"sensitive"},
+    {id:"rt6",text:"Have you shared private relationship information with others without consent?",category:"relevant"},
+    {id:"rt7",text:"Have you made any significant purchases you hid from your partner?",category:"relevant"},
+    {id:"rt8",text:"Are you satisfied in your current relationship?",category:"custom"},
+  ],
+  workplace:[
+    {id:"wk1",text:"Have you ever taken anything of value from your workplace without permission?",category:"relevant"},
+    {id:"wk2",text:"Have you falsified any work records, timesheets, or expense reports?",category:"relevant"},
+    {id:"wk3",text:"Have you shared confidential company information with unauthorized parties?",category:"deception"},
+    {id:"wk4",text:"Have you taken credit for work that was done by a colleague?",category:"relevant"},
+    {id:"wk5",text:"Have you used company resources for significant personal benefit?",category:"relevant"},
+    {id:"wk6",text:"Have you witnessed misconduct at work that you did not report?",category:"sensitive"},
+    {id:"wk7",text:"Are you currently looking for employment elsewhere?",category:"custom"},
+    {id:"wk8",text:"Have you ever made false statements in a job application or resume?",category:"relevant"},
+  ],
+  personal:[
+    {id:"ph1",text:"Have you ever been arrested or charged with a criminal offense?",category:"sensitive"},
+    {id:"ph2",text:"Have you used illegal substances in the past twelve months?",category:"relevant"},
+    {id:"ph3",text:"Do you have any significant debts you have not disclosed to relevant parties?",category:"relevant"},
+    {id:"ph4",text:"Have you ever driven a vehicle while significantly impaired?",category:"relevant"},
+    {id:"ph5",text:"Have you ever cheated on an examination or academic assessment?",category:"relevant"},
+    {id:"ph6",text:"Have you withheld important medical information from a physician?",category:"sensitive"},
+    {id:"ph7",text:"Are there significant events in your past that you actively conceal from others?",category:"deception"},
+    {id:"ph8",text:"Have you ever borrowed money with no intention of repaying it?",category:"relevant"},
+  ],
+};
+
+// SETTINGS SCREEN
+function SettingsScreen({onBack,settings,onSave}){
+  const [s,setS]=useState(settings);
+  const update=(k,v)=>setS(prev=>({...prev,[k]:v}));
+  return(
+    <div style={{minHeight:"100vh",padding:"28px 18px",maxWidth:480,margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:22}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:T.muted,fontSize:20,cursor:"pointer",padding:0,lineHeight:1}}>←</button>
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:22,color:T.white}}>SETTINGS</div>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted}}>EXAMINATION CONFIGURATION</div>
+        </div>
+      </div>
+
+      {/* Pacing */}
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:14}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.accent,letterSpacing:"0.1em",marginBottom:12}}>QUESTION PACING</div>
+        <label>Pause Between Questions: {s.pacingSeconds||3}s</label>
+        <input type="range" min={1} max={10} value={s.pacingSeconds||3} onChange={e=>update("pacingSeconds",+e.target.value)} style={{margin:"6px 0 3px"}}/>
+        <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted}}><span>1s</span><span>10s</span></div>
+      </div>
+
+      {/* Repeat questions */}
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:14}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.accent,letterSpacing:"0.1em",marginBottom:12}}>REPEATED QUESTIONS</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:14,color:T.white,fontWeight:600}}>Re-ask Flagged Questions</div>
+            <div style={{fontSize:12,color:T.muted}}>Ask top 3 flagged questions a second time and average the scores</div>
+          </div>
+          <div onClick={()=>update("repeatFlagged",!s.repeatFlagged)} style={{width:44,height:24,background:s.repeatFlagged?T.accent:T.border,borderRadius:12,position:"relative",cursor:"pointer",transition:"background 0.3s",flexShrink:0}}>
+            <div style={{position:"absolute",top:3,left:s.repeatFlagged?20:3,width:18,height:18,borderRadius:"50%",background:T.white,transition:"left 0.3s"}}/>
+          </div>
+        </div>
+      </div>
+
+      {/* PIN lock */}
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:14}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.accent,letterSpacing:"0.1em",marginBottom:12}}>EXAMINER PIN LOCK</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:s.pinEnabled?12:0}}>
+          <div>
+            <div style={{fontSize:14,color:T.white,fontWeight:600}}>PIN Protect Results</div>
+            <div style={{fontSize:12,color:T.muted}}>Require PIN to view examination report</div>
+          </div>
+          <div onClick={()=>update("pinEnabled",!s.pinEnabled)} style={{width:44,height:24,background:s.pinEnabled?T.accent:T.border,borderRadius:12,position:"relative",cursor:"pointer",transition:"background 0.3s",flexShrink:0}}>
+            <div style={{position:"absolute",top:3,left:s.pinEnabled?20:3,width:18,height:18,borderRadius:"50%",background:T.white,transition:"left 0.3s"}}/>
+          </div>
+        </div>
+        {s.pinEnabled&&(
+          <div>
+            <label>4-Digit PIN</label>
+            <input type="password" inputMode="numeric" maxLength={4} placeholder="Enter 4-digit PIN" value={s.pin||""} onChange={e=>update("pin",e.target.value.replace(/\D/g,"").slice(0,4))} style={{letterSpacing:"0.3em",fontSize:20,textAlign:"center"}}/>
+          </div>
+        )}
+      </div>
+
+      {/* Auto-delete */}
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:14}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.accent,letterSpacing:"0.1em",marginBottom:12}}>AUTO-DELETE SESSION DATA</div>
+        <label>Delete session after</label>
+        <select value={s.autoDeleteHours||0} onChange={e=>update("autoDeleteHours",+e.target.value)}>
+          <option value={0}>Never (manual delete only)</option>
+          <option value={1}>1 hour</option>
+          <option value={6}>6 hours</option>
+          <option value={24}>24 hours</option>
+          <option value={48}>48 hours</option>
+          <option value={168}>1 week</option>
+        </select>
+      </div>
+
+      {/* Calibration duration */}
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:20}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.accent,letterSpacing:"0.1em",marginBottom:12}}>CALIBRATION DURATION</div>
+        <label>Resting baseline duration: {s.calibrationSeconds||16}s</label>
+        <input type="range" min={10} max={60} value={s.calibrationSeconds||16} onChange={e=>update("calibrationSeconds",+e.target.value)} style={{margin:"6px 0 3px"}}/>
+        <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted}}><span>10s (quick)</span><span>60s (accurate)</span></div>
+      </div>
+
+      <button onClick={()=>onSave(s)} style={{width:"100%",padding:16,background:T.accent,border:"none",color:T.bg,fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:16,letterSpacing:"0.12em",borderRadius:8,cursor:"pointer",marginBottom:40}}>
+        SAVE SETTINGS
+      </button>
+    </div>
+  );
+}
+
+// PIN GATE
+function PINGate({correctPin,onUnlock}){
+  const [entered,setEntered]=useState("");
+  const [error,setError]=useState(false);
+  const tap=(n)=>{if(entered.length>=4)return;const next=entered+n;setEntered(next);setError(false);if(next.length===4){if(next===correctPin)onUnlock();else{setError(true);setTimeout(()=>setEntered(""),600);}}};
+  const pad=["1","2","3","4","5","6","7","8","9","","0","⌫"];
+  return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,background:`radial-gradient(ellipse at 50% 40%,#08192a,${T.bg} 65%)`}}>
+      <div style={{fontSize:28,marginBottom:16}}>🔒</div>
+      <div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:24,color:T.white,marginBottom:4}}>RESULTS LOCKED</div>
+      <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:T.muted,marginBottom:32}}>ENTER EXAMINER PIN</div>
+      <div style={{display:"flex",gap:12,marginBottom:32}}>
+        {Array(4).fill(0).map((_,i)=><div key={i} style={{width:16,height:16,borderRadius:"50%",background:i<entered.length?(error?T.bad:T.accent):T.border,transition:"background 0.2s"}}/>)}
+      </div>
+      {error&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:11,color:T.bad,marginBottom:16}}>INCORRECT PIN</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,width:220}}>
+        {pad.map((n,i)=>(
+          n===""?<div key={i}/>:
+          <button key={i} onClick={()=>n==="⌫"?setEntered(e=>e.slice(0,-1)):tap(n)} style={{padding:"18px 0",background:T.panel,border:`1px solid ${T.border}`,color:T.white,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:22,borderRadius:10,cursor:"pointer",transition:"background 0.15s"}}
+            onMouseEnter={e=>e.currentTarget.style.background=T.accentDim}
+            onMouseLeave={e=>e.currentTarget.style.background=T.panel}>
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// QUESTION BANK EDITOR
+function QuestionBankEditor({initialQuestions=[],onSave,onCancel}){
+  const MAX=25;
+  const [questions,setQuestions]=useState(initialQuestions.length>0?initialQuestions:Array(3).fill("").map((_,i)=>({id:`cq${i+1}`,text:"",category:"custom"})));
+  const [showTemplates,setShowTemplates]=useState(false);
+  const addQ=()=>{if(questions.length>=MAX)return;setQuestions(q=>[...q,{id:`cq${Date.now()}`,text:"",category:"custom"}]);};
+  const removeQ=(idx)=>setQuestions(q=>q.filter((_,i)=>i!==idx));
+  const updateText=(idx,text)=>setQuestions(q=>q.map((item,i)=>i===idx?{...item,text}:item));
+  const updateCat=(idx,category)=>setQuestions(q=>q.map((item,i)=>i===idx?{...item,category}:item));
+  const moveUp=(idx)=>{if(idx===0)return;setQuestions(q=>{const a=[...q];[a[idx-1],a[idx]]=[a[idx],a[idx-1]];return a;});};
+  const moveDown=(idx)=>{if(idx===questions.length-1)return;setQuestions(q=>{const a=[...q];[a[idx],a[idx+1]]=[a[idx+1],a[idx]];return a;});};
+  const loadTemplate=(key)=>{const tqs=TEMPLATES[key].map((q,i)=>({...q,id:`${key}_${i}_${Date.now()}`}));setQuestions(prev=>{const combined=[...prev,...tqs].slice(0,MAX);return combined;});setShowTemplates(false);};
+  const valid=questions.filter(q=>q.text.trim().length>0);
+  const catColors={custom:T.accent,sensitive:T.warn,control:T.good,deception:T.bad};
+  const catLabels={custom:"GENERAL",sensitive:"SENSITIVE",control:"CONTROL",deception:"CRITICAL"};
+  return(
+    <div style={{minHeight:"100vh",padding:"24px 18px",maxWidth:540,margin:"0 auto"}}>
+      <div style={{marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontFamily:"'Barlow Condensed'",fontWeight:900,fontSize:24,color:T.white}}>QUESTION BANK</div>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,marginTop:2}}>CUSTOM EXAMINATION · UP TO {MAX} QUESTIONS</div>
+          </div>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:22,color:T.gold}}>{questions.length}<span style={{fontSize:10,color:T.muted}}>/{MAX}</span></div>
+        </div>
+        <div style={{height:3,background:T.border,borderRadius:2,marginTop:8}}><div style={{height:"100%",width:`${(questions.length/MAX)*100}%`,background:`linear-gradient(90deg,${T.accent},${T.gold})`,borderRadius:2,transition:"width 0.3s"}}/></div>
+        <div style={{marginTop:10,padding:"10px 14px",background:T.panel,border:`1px solid ${T.gold}33`,borderRadius:8,fontSize:12,color:T.text,lineHeight:1.6}}>🎯 Each response gets a <strong style={{color:T.gold}}>BS Score 1–10</strong>: 10 = certainly true, 1 = probably false.</div>
+      </div>
+
+      {/* Template loader */}
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:14,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.purple,letterSpacing:"0.1em"}}>QUESTION TEMPLATES</div>
+          <button onClick={()=>setShowTemplates(!showTemplates)} style={{background:"none",border:`1px solid ${T.purple}44`,color:T.purple,fontSize:9,padding:"4px 12px",borderRadius:4,cursor:"pointer",fontFamily:"'Share Tech Mono'"}}>{showTemplates?"HIDE":"BROWSE"}</button>
+        </div>
+        {showTemplates&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:12}}>
+            {[["relationship","💑 Relationship"],["workplace","💼 Workplace"],["personal","🧍 Personal History"]].map(([key,label])=>(
+              <button key={key} onClick={()=>loadTemplate(key)} style={{padding:"10px 6px",background:T.panel2,border:`1px solid ${T.border}`,color:T.text,borderRadius:8,cursor:"pointer",fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:13,lineHeight:1.3,transition:"all 0.15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=T.purple;e.currentTarget.style.color=T.purple;}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.text;}}>
+                {label}<div style={{fontSize:9,color:T.muted,marginTop:3}}>{TEMPLATES[key].length} questions</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {questions.map((q,idx)=>(
+        <div key={q.id} style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:13,marginBottom:10,animation:`slideIn 0.3s ease ${idx*0.03}s both`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
+            <div style={{display:"flex",alignItems:"center",gap:7}}>
+              <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:T.muted,minWidth:22}}>#{idx+1}</div>
+              <div style={{display:"flex",gap:3}}>
+                {Object.entries(catLabels).map(([cat,label])=>(
+                  <button key={cat} onClick={()=>updateCat(idx,cat)} style={{padding:"2px 6px",background:q.category===cat?catColors[cat]+"33":"none",border:`1px solid ${q.category===cat?catColors[cat]:T.border}`,color:q.category===cat?catColors[cat]:T.muted,borderRadius:10,cursor:"pointer",fontFamily:"'Share Tech Mono'",fontSize:7,transition:"all 0.15s"}}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:5}}>
+              <button onClick={()=>moveUp(idx)} disabled={idx===0} style={{background:"none",border:"none",color:idx===0?T.muted:T.text,cursor:idx===0?"not-allowed":"pointer",fontSize:13}}>↑</button>
+              <button onClick={()=>moveDown(idx)} disabled={idx===questions.length-1} style={{background:"none",border:"none",color:idx===questions.length-1?T.muted:T.text,cursor:idx===questions.length-1?"not-allowed":"pointer",fontSize:13}}>↓</button>
+              <button onClick={()=>removeQ(idx)} style={{background:"none",border:"none",color:T.bad,cursor:"pointer",fontSize:13,padding:"0 2px"}}>✕</button>
+            </div>
+          </div>
+          <textarea value={q.text} onChange={e=>updateText(idx,e.target.value)} placeholder={`Question ${idx+1}…`} rows={2} style={{resize:"vertical",fontSize:15,lineHeight:1.4,borderColor:q.text.trim()?catColors[q.category]+"55":T.border}}/>
+          {q.text.trim()&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:catColors[q.category],marginTop:3}}>{catLabels[q.category]}</div>}
+        </div>
+      ))}
+
+      {questions.length<MAX&&<button onClick={addQ} style={{width:"100%",marginBottom:12,padding:12,background:"none",border:`2px dashed ${T.accentDim}`,color:T.accent,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:14,letterSpacing:"0.1em",borderRadius:10,cursor:"pointer"}}>+ ADD QUESTION ({questions.length}/{MAX})</button>}
+
+      <div style={{display:"flex",gap:10,marginBottom:40}}>
+        <button onClick={onCancel} style={{flex:1,padding:14,background:"none",border:`1px solid ${T.border}`,color:T.muted,fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:15,borderRadius:8,cursor:"pointer"}}>CANCEL</button>
+        <button onClick={()=>onSave(valid)} disabled={valid.length===0} style={{flex:2,padding:14,background:valid.length>0?T.gold:T.border,border:"none",color:valid.length>0?T.bg:T.muted,fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:16,letterSpacing:"0.12em",borderRadius:8,cursor:valid.length>0?"pointer":"not-allowed"}}>
+          SAVE {valid.length} QUESTION{valid.length!==1?"S":""} →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// BACKGROUND QUESTIONNAIRE SECTIONS
+const BG_SECTIONS=[
+  {section:"Personal Identity",questions:[
+    {id:"fullName",label:"Full Name",prompt:"Please state your full legal name.",type:"voice_text"},
+    {id:"dob",label:"Date of Birth",prompt:"State your date of birth: month, day, and year.",type:"voice_text"},
+    {id:"sex",label:"Sex",prompt:"Biological sex: Male, Female, or prefer not to say.",type:"select",options:["Male","Female","Prefer not to say"],voiceMap:{male:"Male",female:"Female"}},
+    {id:"handedness",label:"Hand",prompt:"Right-handed, left-handed, or ambidextrous?",type:"select",options:["Right","Left","Ambidextrous"],voiceMap:{right:"Right",left:"Left",ambidextrous:"Ambidextrous"}},
+    {id:"occupation",label:"Occupation",prompt:"Briefly describe your current occupation.",type:"voice_text"},
+  ]},
+  {section:"Health",questions:[
+    {id:"heartCondition",label:"Heart",prompt:"Diagnosed heart conditions? None, managed, or unmanaged.",type:"select",options:["None","Managed","Unmanaged","Prefer not to say"],voiceMap:{none:"None",managed:"Managed",unmanaged:"Unmanaged"}},
+    {id:"meds",label:"Medications",prompt:"Current medications? None, non-psychoactive, antidepressants, beta-blockers, or other.",type:"select",options:["None","Non-psychoactive","Antidepressants","Beta-blockers","Other"],voiceMap:{none:"None",antidepressants:"Antidepressants",beta:"Beta-blockers",other:"Other"}},
+    {id:"caffeine",label:"Caffeine",prompt:"Caffeine in last four hours? None, one cup, two or more, or energy drink.",type:"select",options:["None","1 cup","2+ cups","Energy drink"],voiceMap:{none:"None",one:"1 cup",two:"2+ cups",energy:"Energy drink"}},
+    {id:"sleep",label:"Sleep",prompt:"Hours of sleep last night? Less than four, four to six, six to eight, or more than eight?",type:"select",options:["<4 hrs","4–6 hrs","6–8 hrs","8+ hrs"],voiceMap:{less:"<4 hrs",four:"4–6 hrs",six:"6–8 hrs",eight:"8+ hrs",more:"8+ hrs"}},
+    {id:"pain",label:"Pain",prompt:"Current physical pain zero to ten. Say a number.",type:"voice_range",min:0,max:10,defaultValue:0},
+  ]},
+  {section:"Mental State",questions:[
+    {id:"anxietyNow",label:"Anxiety",prompt:"Anxiety right now, zero to ten. Say a number.",type:"voice_range",min:0,max:10,defaultValue:3},
+    {id:"mood",label:"Mood",prompt:"Mood: very calm, calm, neutral, slightly anxious, anxious, or very anxious?",type:"select",options:["Very calm","Calm","Neutral","Slightly anxious","Anxious","Very anxious"],voiceMap:{"very calm":"Very calm",calm:"Calm",neutral:"Neutral",slight:"Slightly anxious",anxious:"Anxious","very anxious":"Very anxious"}},
+    {id:"mentalDx",label:"Mental Health",prompt:"Mental health diagnoses? None, anxiety, PTSD, ADHD, depression, bipolar, other, or prefer not to say.",type:"select",options:["None","Anxiety","PTSD","ADHD","Depression","Bipolar","Other","Prefer not to say"],voiceMap:{none:"None",anxiety:"Anxiety",ptsd:"PTSD",adhd:"ADHD",depression:"Depression",bipolar:"Bipolar",other:"Other"}},
+  ]},
+  {section:"History",questions:[
+    {id:"priorPoly",label:"Prior Polygraph",prompt:"Prior polygraph? Never, once, or multiple times.",type:"select",options:["Never","Once","Multiple times"],voiceMap:{never:"Never",once:"Once",multiple:"Multiple times"}},
+    {id:"voluntary",label:"Voluntary",prompt:"Taking this test fully voluntarily? Yes fully, somewhat, or no.",type:"select",options:["Yes, fully","Somewhat","No"],voiceMap:{yes:"Yes, fully",somewhat:"Somewhat",no:"No"}},
+    {id:"location",label:"Environment",prompt:"Current environment: home quiet, home noisy, office, public space, vehicle, or other?",type:"select",options:["Home - quiet","Home - noisy","Office","Public space","Vehicle","Other"],voiceMap:{quiet:"Home - quiet",noisy:"Home - noisy",office:"Office",public:"Public space",vehicle:"Vehicle",other:"Other"}},
+    {id:"alone",label:"Alone?",prompt:"Are you alone right now?",type:"select",options:["Yes","No - others present"],voiceMap:{yes:"Yes",alone:"Yes",no:"No - others present"}},
+  ]},
+];
+
+const STANDARD_QUESTIONS=[
+  {id:"q01",type:"control",text:"Is your name the name you provided at the start of this examination?"},
+  {id:"q02",type:"relevant",text:"Have you ever told a significant lie that seriously damaged someone's trust in you?"},
+  {id:"q03",type:"control",text:"Are you currently in the location you described during registration?"},
+  {id:"q04",type:"relevant",text:"Have you stolen anything of value from an employer or colleague in the past five years?"},
+  {id:"q05",type:"irrelevant",text:"Is it currently daytime where you are located?"},
+  {id:"q06",type:"relevant",text:"Have you ever intentionally deceived a close family member about something serious?"},
+  {id:"q07",type:"control",text:"Are you the same person who completed the background profile at the beginning of this session?"},
+  {id:"q08",type:"relevant",text:"Are you deliberately withholding information you believe is relevant to this examination?"},
+  {id:"q09",type:"control",text:"Have you consumed any substance in the past two hours that might affect your alertness?"},
+  {id:"q10",type:"relevant",text:"Have you ever betrayed a close friend's trust in a way you never admitted to them?"},
+];
+
+// Repeated question variants (different phrasing of key questions)
+const REPEAT_VARIANTS={
+  q02:"In your personal relationships, have you ever engaged in deliberate deception that caused lasting damage?",
+  q04:"Has anything of value ever left your workplace in your possession without proper authorization?",
+  q06:"Have you misled an immediate family member about something you consider significant?",
+  q08:"Is there relevant information about the subject of this examination that you are choosing not to disclose?",
+  q10:"Have you broken the trust of a close friend in a serious way and never told them the truth about it?",
+};
+
+// VOICE QUESTIONNAIRE
+function VoiceQuestionnaire({onComplete,existing}){
+  const allQ=BG_SECTIONS.flatMap((s,si)=>s.questions.map(q=>({...q,sectionName:s.section,sectionIdx:si})));
+  const [idx,setIdx]=useState(0);const [answers,setAnswers]=useState(existing||{});const [uiState,setUiState]=useState("idle");const [transcript,setTranscript]=useState("");const [status,setStatus]=useState("");
+  const voiceRef=useRef(null);const recRef=useRef(null);
+  useEffect(()=>{if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=()=>{voiceRef.current=getVoice();};voiceRef.current=getVoice();}},[] );
+  const q=allQ[idx];
+  useEffect(()=>{if(!q)return;promptSpeak((idx===0?"Welcome to VERITEX. I will ask background questions. Answer clearly. ":"")+(idx>0&&allQ[idx-1]?.sectionIdx!==q.sectionIdx?`Section ${q.sectionIdx+1}: ${q.sectionName}. `:"")+q.prompt);},[idx]);
+  const promptSpeak=async text=>{setUiState("speaking");setTranscript("");setStatus("");await speak(text,{voice:voiceRef.current,rate:0.88});setUiState("listening");startL();};
+  const startL=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setUiState("manual");return;}if(recRef.current){try{recRef.current.stop();}catch{}}const rec=new SR();rec.lang="en-US";rec.interimResults=true;rec.maxAlternatives=3;rec.onstart=()=>setUiState("listening");rec.onresult=e=>{const finals=Array.from(e.results).filter(r=>r.isFinal).map(r=>r[0].transcript).join(" ");const interim=Array.from(e.results).filter(r=>!r.isFinal).map(r=>r[0].transcript).join(" ");setTranscript((finals+" "+interim).trim());if(finals.trim())processAnswer(finals.trim());};rec.onend=()=>setUiState("manual");rec.onerror=()=>setUiState("manual");recRef.current=rec;rec.start();};
+  const processAnswer=async text=>{
+    let value=null;
+    if(q.type==="voice_text")value=text.trim();
+    else if(q.type==="voice_range"){const words={zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10};const m=text.match(/\b(\d+)\b/);if(m){const n=parseInt(m[1]);if(n>=q.min&&n<=q.max)value=n;}if(value===null){for(const[w,n]of Object.entries(words)){if(text.toLowerCase().includes(w)&&n>=q.min&&n<=q.max){value=n;break;}}}}
+    else if(q.type==="select"&&q.voiceMap){for(const[k,v]of Object.entries(q.voiceMap)){if(text.toLowerCase().includes(k.toLowerCase())){value=v;break;}}if(!value){const m=q.options.find(o=>text.toLowerCase().includes(o.toLowerCase()));if(m)value=m;}}
+    if(value!=null){setUiState("speaking");await speak(`I heard: ${value}. Yes to confirm, no to retry.`,{voice:voiceRef.current,rate:0.95});setUiState("confirming");listenConfirm(value);}
+    else{setUiState("speaking");await speak("I didn't catch that. Please try again.",{voice:voiceRef.current,rate:0.95});setUiState("listening");startL();}
+  };
+  const listenConfirm=value=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){acceptAnswer(value);return;}if(recRef.current){try{recRef.current.stop();}catch{}}const rec=new SR();rec.lang="en-US";rec.interimResults=false;rec.onresult=async e=>{const t=e.results[0][0].transcript;const yn=parseYesNo(t);if(yn==="Yes"){rec.stop();acceptAnswer(value);}else if(yn==="No"){rec.stop();setUiState("speaking");await speak("Let's try again. "+q.prompt,{voice:voiceRef.current,rate:0.88});setUiState("listening");startL();}else{rec.stop();listenConfirm(value);}};rec.onend=()=>{};rec.onerror=()=>{};recRef.current=rec;rec.start();};
+  const acceptAnswer=async value=>{const updated={...answers,[q.id]:value};setAnswers(updated);setStatus(`✓ ${value}`);setUiState("speaking");await speak("Confirmed.",{voice:voiceRef.current,rate:1.1,pitch:1.1});if(idx===allQ.length-1){await speak("Profile complete. Proceeding to calibration.",{voice:voiceRef.current,rate:0.88});onComplete(updated);}else setTimeout(()=>setIdx(i=>i+1),200);};
+  const handleManual=val=>{const updated={...answers,[q.id]:val};setAnswers(updated);setStatus(`✓ ${val}`);if(idx===allQ.length-1)onComplete(updated);else setTimeout(()=>setIdx(i=>i+1),300);};
+  const pct=(idx/allQ.length)*100;
+  return(
+    <div style={{minHeight:"100vh",padding:"24px 18px",maxWidth:500,margin:"0 auto"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}><div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:20,color:T.white}}>VOICE INTAKE</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:T.accent}}>{idx+1}/{allQ.length}</div></div>
+        <div style={{height:2,background:T.border,borderRadius:1,marginTop:6}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${T.accentDim},${T.accent})`,transition:"width 0.4s",borderRadius:1}}/></div>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,marginTop:4}}>§{q.sectionIdx+1} — {q.sectionName.toUpperCase()}</div>
+      </div>
+      <VoiceStatus speaking={uiState==="speaking"} listening={uiState==="listening"||uiState==="confirming"} transcript={transcript}/>
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:18,marginBottom:12}}>
+        <div style={{fontSize:17,color:T.white,fontWeight:600,lineHeight:1.5,marginBottom:12}}>{q.prompt}</div>
+        {status&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:11,color:T.good,background:T.good+"18",padding:"5px 10px",borderRadius:5,marginBottom:8}}>{status}</div>}
+        {q.type==="voice_range"&&(<div><input type="range" min={q.min} max={q.max} value={answers[q.id]??q.defaultValue} onChange={e=>setAnswers(a=>({...a,[q.id]:+e.target.value}))} style={{margin:"6px 0 3px"}}/><div style={{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"'Share Tech Mono'",color:T.muted}}><span>{q.min}</span><span style={{color:T.accent}}>{answers[q.id]??q.defaultValue}</span><span>{q.max}</span></div><button onClick={()=>handleManual(answers[q.id]??q.defaultValue)} style={{width:"100%",marginTop:8,padding:10,background:T.good+"22",border:`1px solid ${T.good}`,color:T.good,borderRadius:6,cursor:"pointer",fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:14}}>CONFIRM {answers[q.id]??q.defaultValue}</button></div>)}
+        {q.type==="select"&&(<div style={{display:"flex",flexWrap:"wrap",gap:7,marginTop:6}}>{q.options.map(opt=><button key={opt} onClick={()=>handleManual(opt)} style={{padding:"6px 13px",background:answers[q.id]===opt?T.accent+"33":T.panel2,border:`1px solid ${answers[q.id]===opt?T.accent:T.border}`,color:answers[q.id]===opt?T.accent:T.text,borderRadius:18,cursor:"pointer",fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:13,transition:"all 0.15s"}}>{opt}</button>)}</div>)}
+        {q.type==="voice_text"&&(<div><input type="text" placeholder="Or type answer…" value={answers[q.id]||""} onChange={e=>setAnswers(a=>({...a,[q.id]:e.target.value}))}/>{answers[q.id]&&<button onClick={()=>handleManual(answers[q.id])} style={{width:"100%",marginTop:8,padding:10,background:T.good+"22",border:`1px solid ${T.good}`,color:T.good,borderRadius:6,cursor:"pointer",fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:14}}>CONFIRM →</button>}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:9}}>
+        <button onClick={()=>{if(idx>0)setIdx(i=>i-1);}} disabled={idx===0} style={{padding:"9px 5px",background:"none",border:`1px solid ${idx===0?T.border:T.muted}`,color:idx===0?T.muted:T.text,borderRadius:6,cursor:idx===0?"not-allowed":"pointer",fontFamily:"'Share Tech Mono'",fontSize:9}}>← BACK</button>
+        <button onClick={()=>promptSpeak(q.prompt)} disabled={uiState==="speaking"} style={{padding:"9px 5px",background:T.purple+"22",border:`1px solid ${T.purple}44`,color:T.purple,borderRadius:6,cursor:"pointer",fontFamily:"'Share Tech Mono'",fontSize:9}}>↺ REPEAT</button>
+        <button onClick={()=>{const v=q.defaultValue??(q.options?.[0]||"Skipped");handleManual(v);}} style={{padding:"9px 5px",background:"none",border:`1px solid ${T.border}`,color:T.muted,borderRadius:6,cursor:"pointer",fontFamily:"'Share Tech Mono'",fontSize:9}}>SKIP →</button>
+      </div>
+      <button onClick={startL} disabled={uiState==="speaking"} style={{width:"100%",padding:14,background:uiState==="listening"?T.accent+"33":T.accentDim+"44",border:`2px solid ${uiState==="listening"?T.accent:T.accentDim}`,color:uiState==="listening"?T.accent:T.text,borderRadius:10,cursor:uiState==="speaking"?"not-allowed":"pointer",fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:16,letterSpacing:"0.12em",animation:uiState==="listening"?"listenRing 1.5s infinite":"none",transition:"all 0.3s"}}>
+        {uiState==="listening"?"🎤 LISTENING…":uiState==="speaking"?"🔊 SPEAKING…":"🎤 TAP TO SPEAK"}
+      </button>
+    </div>
+  );
+}
+
+// CALIBRATION
+function Calibration({onComplete,settings={},bt}){
+  const ppg=usePPG(true);const vs=useVoiceStress(true);const facial=useFacialAnalysis(true);
+  const [phase,setPhase]=useState("idle");const [countdown,setCountdown]=useState(settings.calibrationSeconds||16);const baselines=useRef({});const voiceRef=useRef(null);
+  const calDur=settings.calibrationSeconds||16;
+  useEffect(()=>{if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=()=>{voiceRef.current=getVoice();};voiceRef.current=getVoice();}setTimeout(async()=>{await speak("Calibration. Finger on rear camera. Look at front camera. Remain silent and still.",{voice:voiceRef.current,rate:0.88});setPhase("baseline");setCountdown(calDur);},600);},[]);
+  useEffect(()=>{if(phase==="idle")return;if(countdown<=0){if(phase==="baseline"){const fb=facial.setBaseline();const vb=vs.setBaseline();baselines.current.rest={hr:bt?.btData?.hr||ppg.hr,hrv:bt?.btData?.hrv||ppg.hrv,spO2:bt?.btData?.spO2,skinTemp:bt?.btData?.skinTemp,vsaBaseline:vb,facialBaseline:fb};(async()=>{await speak("Baseline recorded. Now say clearly: The weather today is quite pleasant and I feel comfortable.",{voice:voiceRef.current,rate:0.88});setPhase("voice_truth");setCountdown(12);})();}else if(phase==="voice_truth"){baselines.current.truth={hr:bt?.btData?.hr||ppg.hr,hrv:bt?.btData?.hrv||ppg.hrv};(async()=>{await speak("All baselines locked. Standard examination starting. Answer yes or no only.",{voice:voiceRef.current,rate:0.88});onComplete(baselines.current);})();}return;}const t=setTimeout(()=>setCountdown(c=>c-1),1000);return()=>clearTimeout(t);},[countdown,phase]);
+  const cfg={idle:{title:"PREPARING",color:T.muted,dur:1},baseline:{title:"RESTING BASELINE — SILENT",color:T.accent,dur:calDur},voice_truth:{title:"VOICE TRUTH BASELINE",color:T.good,dur:12}};
+  const c=cfg[phase]||cfg.idle;const pct=phase!=="idle"?countdown/c.dur:1;
+  return(
+    <div style={{minHeight:"100vh",padding:"28px 18px",maxWidth:480,margin:"0 auto"}}>
+      <div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:22,color:T.white}}>CALIBRATION</div>
+      <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,letterSpacing:"0.1em",marginBottom:16}}>VOICE + FACIAL + PHYSIOLOGICAL + BLUETOOTH</div>
+      {bt&&<BluetoothPanel bt={bt}/>}
+      <PPGGuide fingerDetected={ppg.fingerDetected} hr={bt?.btData?.hr||ppg.hr} hrv={bt?.btData?.hrv||ppg.hrv}/>
+      <FacialMini facial={facial}/>
+      <div style={{textAlign:"center",margin:"16px 0"}}>
+        <div style={{position:"relative",width:100,height:100,margin:"0 auto"}}>
+          <svg width={100} height={100} style={{position:"absolute",inset:0}}><circle cx={50} cy={50} r={42} fill="none" stroke={T.border} strokeWidth={4}/><circle cx={50} cy={50} r={42} fill="none" stroke={c.color} strokeWidth={4} strokeDasharray={`${pct*264} 264`} strokeLinecap="round" transform="rotate(-90 50 50)" style={{transition:"stroke-dasharray 0.9s"}}/></svg>
+          <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:26,color:c.color}}>{phase!=="idle"?countdown:"…"}</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted}}>SEC</div></div>
+        </div>
+        <div style={{fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:16,color:c.color,letterSpacing:"0.1em",marginTop:10}}>{c.title}</div>
+        {phase==="voice_truth"&&<div style={{margin:"12px 8px 0",padding:12,background:T.good+"18",border:`1px solid ${T.good}44`,borderRadius:8,fontSize:14,color:T.white,fontWeight:600,fontStyle:"italic",lineHeight:1.5}}>"The weather today is quite pleasant and I feel comfortable."</div>}
+      </div>
+    </div>
+  );
+}
+
+// STANDARD TEST
+function StandardTest({profile,baselines,settings={},onComplete,bt}){
+  const ppg=usePPG(true);const vs=useVoiceStress(true);const facial=useFacialAnalysis(true);
+  const [qIdx,setQIdx]=useState(0);const [responses,setResponses]=useState([]);const [uiState,setUiState]=useState("idle");const [transcript,setTranscript]=useState("");const [phase,setPhase]=useState("standard");// standard | repeat
+  const [repeatQueue,setRepeatQueue]=useState([]);const [repeatIdx,setRepeatIdx]=useState(0);
+  const startRef=useRef(null);const snapRef=useRef(null);const vsaStartRef=useRef(null);const facialStartRef=useRef(null);const voiceRef=useRef(null);const recRef=useRef(null);
+  const pacing=(settings.pacingSeconds||3)*1000;
+  useEffect(()=>{if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=()=>{voiceRef.current=getVoice();};voiceRef.current=getVoice();}},[] );
+  
+  const currentQ=phase==="standard"?STANDARD_QUESTIONS[qIdx]:repeatQueue[repeatIdx];
+
+  const askQ=useCallback(async question=>{
+    setTranscript("");setUiState("speaking");
+    snapRef.current={hr:bt?.btData?.hr||ppg.hr,hrv:bt?.btData?.hrv||ppg.hrv,gsr:0.5};
+    vsaStartRef.current=Date.now();facialStartRef.current=Date.now();
+    const prefix=phase==="repeat"?"Follow-up question. ":qIdx===0?"Examination beginning. Answer yes or no only. ":"";
+    await speak(prefix+question.text,{voice:voiceRef.current,rate:0.86,pitch:0.92});
+    startRef.current=Date.now();setUiState("listening");startL(question);
+  },[qIdx,ppg,bt,phase]);
+
+  useEffect(()=>{if(!currentQ)return;const t=setTimeout(()=>askQ(currentQ),qIdx===0&&phase==="standard"?700:pacing);return()=>clearTimeout(t);},[qIdx,repeatIdx,phase]);
+
+  const startL=question=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setUiState("idle");return;}if(recRef.current){try{recRef.current.stop();}catch{}}const rec=new SR();rec.lang="en-US";rec.interimResults=true;rec.maxAlternatives=3;rec.onstart=()=>setUiState("listening");rec.onresult=e=>{const finals=Array.from(e.results).filter(r=>r.isFinal).map(r=>r[0].transcript).join(" ");const interim=Array.from(e.results).filter(r=>!r.isFinal).map(r=>r[0].transcript).join(" ");setTranscript((finals+" "+interim).trim());if(finals.trim()){const yn=parseYesNo(finals.trim());if(yn){rec.stop();capRec(yn,question);}}};rec.onend=()=>{};rec.onerror=()=>{};recRef.current=rec;rec.start();};
+
+  const capRec=async(ans,question)=>{
+    const vsaF=vs.captureFeatures(Date.now()-vsaStartRef.current);const vsaS=vs.getStressForCapture(vsaF);
+    const facC=facial.captureWindow(Date.now()-facialStartRef.current);const facD=facial.getDeceptionForCapture(facC);
+    setUiState("speaking");await speak(ans+".",{voice:voiceRef.current,rate:1.1});setUiState("idle");
+    const rt=Date.now()-startRef.current;
+    const rec={questionId:question.id+(phase==="repeat"?"_r":""),type:question.type,text:question.text,answer:ans,responseTime:rt,isRepeat:phase==="repeat",sensorAtStart:snapRef.current,delta:{hr:(bt?.btData?.hr||ppg.hr||0)-(snapRef.current?.hr||0),hrv:(bt?.btData?.hrv||ppg.hrv||0)-(snapRef.current?.hrv||0)},vsaFeatures:vsaF,vsaStress:vsaS?{score:vsaS.score,level:vsaS.level}:null,facialCapture:facC,facialDeception:facD?{score:facD.score,level:facD.level}:null,btData:{...bt?.btData},voiceTranscript:transcript};
+    const updated=[...responses,rec];setResponses(updated);
+
+    if(phase==="standard"){
+      if(qIdx<STANDARD_QUESTIONS.length-1){setTimeout(()=>setQIdx(i=>i+1),400);}
+      else{
+        // Check if we should repeat flagged questions
+        if(settings.repeatFlagged){
+          const flagged=updated.filter(r=>r.vsaStress?.level==="HIGH"||r.facialDeception?.level==="HIGH"||r.responseTime>4000).slice(0,3);
+          const repeatQs=flagged.map(r=>({id:r.questionId,type:r.type,text:REPEAT_VARIANTS[r.questionId]||r.text})).filter(q=>q.text);
+          if(repeatQs.length>0){
+            setPhase("repeat");setRepeatQueue(repeatQs);setRepeatIdx(0);
+            setUiState("speaking");await speak(`I will now re-ask ${repeatQs.length} question${repeatQs.length>1?"s":""} for additional clarity.`,{voice:voiceRef.current,rate:0.9});setUiState("idle");return;
+          }
+        }
+        setUiState("speaking");await speak("Examination complete.",{voice:voiceRef.current,rate:0.9});onComplete(updated);
+      }
+    }else{
+      if(repeatIdx<repeatQueue.length-1){setTimeout(()=>setRepeatIdx(i=>i+1),400);}
+      else{setUiState("speaking");await speak("Examination complete.",{voice:voiceRef.current,rate:0.9});onComplete(updated);}
+    }
+  };
+
+  const typeColors={control:T.accent,relevant:T.warn,irrelevant:T.muted};
+  const isRepeatPhase=phase==="repeat";
+  const qNum=isRepeatPhase?STANDARD_QUESTIONS.length+repeatIdx+1:qIdx+1;
+  const qTotal=isRepeatPhase?STANDARD_QUESTIONS.length+repeatQueue.length:STANDARD_QUESTIONS.length;
+  return(
+    <div style={{minHeight:"100vh",padding:"24px 18px",maxWidth:480,margin:"0 auto",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:20,color:T.white}}>{isRepeatPhase?"RE-EXAMINATION":"STANDARD EXAM"}</div>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted}}>Q{qNum} OF {qTotal}{isRepeatPhase?" · REPEAT PHASE":""}</div>
+        </div>
+        <div style={{display:"flex",gap:4}}>{STANDARD_QUESTIONS.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:i<qIdx?T.good:i===qIdx&&!isRepeatPhase?T.accent:T.border,transition:"background 0.3s"}}/>)}</div>
+      </div>
+      {bt&&<BluetoothPanel bt={bt}/>}
+      <PPGGuide fingerDetected={ppg.fingerDetected} hr={bt?.btData?.hr||ppg.hr} hrv={bt?.btData?.hrv||ppg.hrv}/>
+      <FacialMini facial={facial}/>
+      <VoiceStatus speaking={uiState==="speaking"} listening={uiState==="listening"} transcript={transcript} pitch={vs.live.pitch} stressLevel={vs.live.stressLevel} speakingRate={vs.live.speakingRate} microPauses={vs.live.microPauses}/>
+      <div style={{flex:1}}>
+        {currentQ&&(<div style={{background:T.panel,border:`1px solid ${isRepeatPhase?T.gold:typeColors[currentQ.type]||T.accent}44`,borderRadius:12,padding:18,animation:"fadeUp 0.4s ease"}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:isRepeatPhase?T.gold:typeColors[currentQ.type]||T.accent,letterSpacing:"0.1em",marginBottom:8}}>{isRepeatPhase?"REPEAT — "+currentQ.type?.toUpperCase():currentQ.type?.toUpperCase()}</div>
+          <div style={{fontSize:18,color:T.white,fontWeight:600,lineHeight:1.5,marginBottom:16}}>{currentQ.text}</div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>{try{recRef.current?.stop();}catch{}capRec("Yes",currentQ);}} style={{flex:1,padding:14,background:T.good+"1a",border:`2px solid ${T.good}`,color:T.good,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:18,borderRadius:9,cursor:"pointer"}}>YES</button>
+            <button onClick={()=>{try{recRef.current?.stop();}catch{}capRec("No",currentQ);}} style={{flex:1,padding:14,background:T.bad+"1a",border:`2px solid ${T.bad}`,color:T.bad,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:18,borderRadius:9,cursor:"pointer"}}>NO</button>
+          </div>
+          <button onClick={()=>{try{recRef.current?.stop();}catch{}askQ(currentQ);}} style={{width:"100%",marginTop:8,padding:9,background:"none",border:`1px solid ${T.purple}44`,color:T.purple,borderRadius:7,cursor:"pointer",fontFamily:"'Share Tech Mono'",fontSize:9}}>↺ REPEAT</button>
+        </div>)}
+      </div>
+      <div style={{marginTop:10,display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:4}}>
+        {[{l:"HR",v:bt?.btData?.hr||ppg.hr||"--",c:T.bad},{l:"HRV",v:bt?.btData?.hrv||ppg.hrv||"--",c:T.gold},{l:"SpO2",v:bt?.btData?.spO2?bt.btData.spO2+"%":"--",c:T.accent},{l:"F0",v:vs.live.pitch>0?vs.live.pitch:"--",c:T.teal},{l:"GAZE",v:facial.live.gazeDir,c:facial.live.gazeDir==="CENTER"?T.good:T.warn},{l:"RESP",v:facial.live.respRate||"--",c:T.mint}].map(s=>(
+          <div key={s.l} style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:5,padding:"5px 2px",textAlign:"center"}}>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:s.c}}>{s.v}</div>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:6,color:T.muted}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// EXAMINER HUB
+function ExaminerHub({session,customQuestions,onStartCustom,onEditQuestions,onProceedToResults,examinerNotes,setExaminerNotes}){
+  const customCount=customQuestions.filter(q=>q.text?.trim()).length;
+  return(
+    <div style={{minHeight:"100vh",padding:"32px 20px",maxWidth:480,margin:"0 auto",display:"flex",flexDirection:"column"}}>
+      <div style={{fontFamily:"'Barlow Condensed'",fontWeight:900,fontSize:26,color:T.white}}>EXAMINER HUB</div>
+      <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,letterSpacing:"0.1em",marginBottom:20}}>STANDARD EXAMINATION COMPLETE</div>
+      <div style={{background:T.panel,border:`1px solid ${T.good}44`,borderRadius:10,padding:14,marginBottom:18}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{fontSize:22}}>✅</div><div><div style={{fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:16,color:T.good}}>STANDARD EXAM COMPLETE</div><div style={{fontSize:13,color:T.text}}>{session.responses?.length||0} questions answered{session.responses?.filter(r=>r.isRepeat).length>0?` (${session.responses.filter(r=>r.isRepeat).length} repeated)`:""}</div></div></div>
+      </div>
+
+      {/* Examiner Notes */}
+      <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:14,marginBottom:16}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.accent,letterSpacing:"0.1em",marginBottom:10}}>EXAMINER NOTES</div>
+        <textarea value={examinerNotes} onChange={e=>setExaminerNotes(e.target.value)} placeholder="Record observations, behavioral notes, or contextual information about this examination…" rows={4} style={{resize:"vertical",fontSize:14,lineHeight:1.5}}/>
+      </div>
+
+      {/* Custom questions */}
+      <div style={{background:T.panel,border:`2px solid ${T.gold}44`,borderRadius:12,padding:18,marginBottom:18}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:T.gold,letterSpacing:"0.12em",marginBottom:12}}>CUSTOM QUESTION BANK</div>
+        {customCount===0?(
+          <div style={{textAlign:"center",padding:"8px 0 14px"}}>
+            <div style={{fontSize:36,marginBottom:8}}>📋</div>
+            <div style={{fontSize:14,color:T.text,lineHeight:1.5,marginBottom:12}}>No custom questions loaded. Add up to 25 personalized questions.</div>
+            <button onClick={onEditQuestions} style={{padding:"12px 24px",background:T.gold,border:"none",color:T.bg,fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:14,letterSpacing:"0.1em",borderRadius:8,cursor:"pointer"}}>+ CREATE QUESTION BANK</button>
+          </div>
+        ):(
+          <div>
+            <div style={{fontSize:13,color:T.text,lineHeight:1.5,marginBottom:12}}><strong style={{color:T.gold}}>{customCount} questions</strong> ready. Each gets a BS Score 1–10.</div>
+            {customQuestions.filter(q=>q.text?.trim()).slice(0,3).map((q,i)=>(
+              <div key={i} style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,padding:"4px 0",borderBottom:`1px solid ${T.border}`}}>#{i+1} {q.text.length>55?q.text.slice(0,55)+"…":q.text}</div>
+            ))}
+            {customCount>3&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.muted,marginTop:4}}>+{customCount-3} more…</div>}
+            <div style={{display:"flex",gap:10,marginTop:14}}>
+              <button onClick={onEditQuestions} style={{flex:1,padding:11,background:"none",border:`1px solid ${T.gold}`,color:T.gold,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:13,borderRadius:7,cursor:"pointer"}}>✏ EDIT</button>
+              <button onClick={onStartCustom} style={{flex:2,padding:11,background:T.gold,border:"none",color:T.bg,fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:14,letterSpacing:"0.1em",borderRadius:7,cursor:"pointer"}}>▶ START CUSTOM EXAM</button>
+            </div>
+          </div>
+        )}
+      </div>
+      <button onClick={onProceedToResults} style={{padding:14,background:"none",border:`1px solid ${T.border}`,color:T.muted,fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:14,letterSpacing:"0.08em",borderRadius:8,cursor:"pointer",marginTop:"auto"}}>SKIP → GENERATE REPORT</button>
+    </div>
+  );
+}
+
+// CUSTOM EXAMINATION WITH BS SCORING
+function CustomExamination({session,customQuestions,settings={},bt,onComplete}){
+  const ppg=usePPG(true);const vs=useVoiceStress(true);const facial=useFacialAnalysis(true);
+  const [qIdx,setQIdx]=useState(0);const [responses,setResponses]=useState([]);const [uiState,setUiState]=useState("idle");const [transcript,setTranscript]=useState("");const [currentBS,setCurrentBS]=useState(null);
+  const startRef=useRef(null);const snapRef=useRef(null);const vsaStartRef=useRef(null);const facialStartRef=useRef(null);const voiceRef=useRef(null);const recRef=useRef(null);
+  const pacing=(settings.pacingSeconds||3)*1000;
+  useEffect(()=>{if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=()=>{voiceRef.current=getVoice();};voiceRef.current=getVoice();}},[] );
+  const q=customQuestions[qIdx];
+  const askQ=useCallback(async question=>{setTranscript("");setCurrentBS(null);setUiState("speaking");snapRef.current={hr:bt?.btData?.hr||ppg.hr,hrv:bt?.btData?.hrv||ppg.hrv};vsaStartRef.current=Date.now();facialStartRef.current=Date.now();await speak((qIdx===0?"Custom examination. Answer yes or no. ":"")+question.text,{voice:voiceRef.current,rate:0.86,pitch:0.92});startRef.current=Date.now();setUiState("listening");startL(question);},[qIdx,ppg,bt]);
+  useEffect(()=>{if(!q)return;const t=setTimeout(()=>askQ(q),qIdx===0?600:pacing);return()=>clearTimeout(t);},[qIdx]);
+  const startL=question=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setUiState("listening");return;}if(recRef.current){try{recRef.current.stop();}catch{}}const rec=new SR();rec.lang="en-US";rec.interimResults=true;rec.maxAlternatives=3;rec.onstart=()=>setUiState("listening");rec.onresult=e=>{const finals=Array.from(e.results).filter(r=>r.isFinal).map(r=>r[0].transcript).join(" ");const interim=Array.from(e.results).filter(r=>!r.isFinal).map(r=>r[0].transcript).join(" ");setTranscript((finals+" "+interim).trim());if(finals.trim()){const yn=parseYesNo(finals.trim());if(yn){rec.stop();captureAndScore(yn,question);}}};rec.onend=()=>{};rec.onerror=()=>{};recRef.current=rec;rec.start();};
+  const captureAndScore=async(ans,question)=>{
+    const vsaF=vs.captureFeatures(Date.now()-vsaStartRef.current);const vsaS=vs.getStressForCapture(vsaF);
+    const facC=facial.captureWindow(Date.now()-facialStartRef.current);const facD=facial.getDeceptionForCapture(facC);
+    const rt=Date.now()-startRef.current;setUiState("scoring");await speak("Analyzing.",{voice:voiceRef.current,rate:1.1});
+    const signals=[];let dw=0;
+    if(vsaS?.level==="HIGH"){signals.push("HIGH voice stress");dw+=2.5;}else if(vsaS?.level==="MODERATE"){signals.push("moderate voice stress");dw+=1.2;}
+    if(facD?.level==="HIGH"){signals.push("HIGH facial markers");dw+=2.5;}else if(facD?.level==="MODERATE"){signals.push("gaze aversion");dw+=1.2;}
+    if(facC?.prolongedBlinks>2){signals.push("prolonged blinks");dw+=0.5;}
+    if(rt>4000){signals.push("very slow response");dw+=1.5;}else if(rt>2500){signals.push("hesitation");dw+=0.7;}
+    const hrDelta=(bt?.btData?.hr||ppg.hr||72)-(snapRef.current?.hr||72);
+    if(hrDelta>8){signals.push("cardiac elevation");dw+=0.8;}
+    if(vsaF?.jitter>0.07){signals.push("elevated jitter");dw+=0.4;}
+    if(vsaF?.microPauses>2){signals.push("micro-pauses detected");dw+=0.5;}
+    if(facC?.avgRespRate&&session.baselines?.rest?.facialBaseline?.avgRespRate){const rd=Math.abs(facC.avgRespRate-session.baselines.rest.facialBaseline.avgRespRate);if(rd>4){signals.push("respiration change");dw+=0.5;}}
+    let rawScore=Math.max(1,Math.min(10,Math.round(10-dw)));
+    let bsResult={score:rawScore,label:bsLabel(rawScore),rationale:signals.length>0?`Detected: ${signals.join(", ")}.`:"No significant deception markers detected.",verdict:bsLabel(rawScore)};
+    if(window.VERITEX_API_KEY){
+      try{
+        const priorCtx=responses.slice(-4).map(r=>`"${r.text}"→${r.answer}(BS:${r.bsScore})`).join("; ");
+        const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:400,messages:[{role:"user",content:`You are a forensic veracity scorer. Score on BS scale 1–10 (10=certainly true, 1=probably false). Return ONLY JSON: {"score":<1-10>,"label":"<CERTAINLY TRUE|LIKELY TRUE|UNCERTAIN|LIKELY FALSE|PROBABLY FALSE>","rationale":"<1 sentence>","verdict":"<1 spoken sentence>"}\n\nQ: "${question.text}"\nANSWER: ${ans}\nRT: ${rt}ms\nVSA: ${vsaS?.level||"UNKNOWN"}(${((vsaS?.score||0)*100).toFixed(0)}%)\nFACIAL: ${facD?.level||"UNKNOWN"}(${((facD?.score||0)*100).toFixed(0)}%)\nGAZE: ${facC?.dominantGaze||"?"} AVERSION:${((facC?.gazeAversion||0)*100).toFixed(0)}%\nBLINK:${facC?.avgBlinkRate?.toFixed(0)||"?"}/min PROLONGED:${facC?.prolongedBlinks||0}\nRESP RATE:${facC?.avgRespRate||"?"}bpm\nHR DELTA:${hrDelta}bpm\nMICRO-PAUSES:${vsaF?.microPauses||0}\nBT SpO2:${bt?.btData?.spO2||"N/A"} TEMP:${bt?.btData?.skinTemp||"N/A"}°F\nSIGNALS: ${signals.join(", ")||"none"}\nHEURISTIC: ${rawScore}\nPRIOR: ${priorCtx||"none"}`}]})});
+        const data=await res.json();const txt=(data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();const parsed=JSON.parse(txt);
+        bsResult={score:Math.max(1,Math.min(10,parsed.score)),label:parsed.label,rationale:parsed.rationale,verdict:parsed.verdict};
+      }catch{}
+    }
+    setCurrentBS(bsResult);
+    await speak(`BS score: ${bsResult.score} out of 10. ${bsResult.verdict}.`,{voice:voiceRef.current,rate:0.88,pitch:bsResult.score>=7?1.05:bsResult.score<=3?0.88:0.95});
+    const rec={questionId:question.id,type:"custom",category:question.category,text:question.text,answer:ans,responseTime:rt,bsScore:bsResult.score,bsLabel:bsResult.label,bsRationale:bsResult.rationale,sensorAtStart:snapRef.current,delta:{hr:hrDelta},vsaFeatures:vsaF,vsaStress:vsaS?{score:vsaS.score,level:vsaS.level}:null,facialCapture:facC,facialDeception:facD?{score:facD.score,level:facD.level}:null,btData:{...bt?.btData}};
+    const updated=[...responses,rec];setResponses(updated);
+    if(qIdx<customQuestions.length-1){await new Promise(r=>setTimeout(r,2000));setQIdx(i=>i+1);}
+    else{setUiState("done");await speak("Custom examination complete. Generating full report.",{voice:voiceRef.current,rate:0.9});setTimeout(()=>onComplete(updated),1000);}
+  };
+  const catColors={custom:T.accent,sensitive:T.warn,control:T.good,deception:T.bad};
+  return(
+    <div style={{minHeight:"100vh",padding:"24px 18px",maxWidth:480,margin:"0 auto",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div><div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:20,color:T.white}}>CUSTOM EXAM</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted}}>Q{qIdx+1} OF {customQuestions.length} · BS SCORING</div></div>
+        <div style={{display:"flex",gap:4}}>{customQuestions.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:i<qIdx?T.gold:i===qIdx?T.accent:T.border,transition:"background 0.3s"}}/>)}</div>
+      </div>
+      {bt&&<BluetoothPanel bt={bt}/>}
+      <PPGGuide fingerDetected={ppg.fingerDetected} hr={bt?.btData?.hr||ppg.hr} hrv={bt?.btData?.hrv||ppg.hrv}/>
+      <FacialMini facial={facial}/>
+      <VoiceStatus speaking={uiState==="speaking"} listening={uiState==="listening"} transcript={transcript} pitch={vs.live.pitch} stressLevel={vs.live.stressLevel} speakingRate={vs.live.speakingRate} microPauses={vs.live.microPauses}/>
+      {q&&(
+        <div style={{background:T.panel,border:`2px solid ${catColors[q.category]||T.accent}44`,borderRadius:12,padding:18,marginBottom:12,flex:1,animation:"fadeUp 0.4s ease"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:catColors[q.category]||T.accent,letterSpacing:"0.1em"}}>{q.category?.toUpperCase()||"GENERAL"}</div>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted}}>{currentBS?"BS: "+currentBS.score+"/10":"SCORING…"}</div>
+          </div>
+          <div style={{fontSize:19,color:T.white,fontWeight:600,lineHeight:1.5,marginBottom:18}}>{q.text}</div>
+          {uiState==="scoring"&&<div style={{textAlign:"center",padding:12}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:T.gold,animation:"pulse 0.8s infinite"}}>⚡ COMPUTING BS SCORE…</div></div>}
+          {currentBS&&uiState!=="scoring"&&(
+            <div style={{background:T.panel2,border:`1px solid ${bsColor(currentBS.score)}44`,borderRadius:10,padding:14,animation:"scorePop 0.6s ease"}}>
+              <BSMeter score={currentBS.score} label="BS VERACITY SCORE"/>
+              <div style={{marginTop:10,fontSize:12,color:T.text,lineHeight:1.6,textAlign:"center"}}>{currentBS.rationale}</div>
+            </div>
+          )}
+          {(uiState==="listening"||uiState==="idle")&&!currentBS&&(
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{try{recRef.current?.stop();}catch{}captureAndScore("Yes",q);}} style={{flex:1,padding:14,background:T.good+"1a",border:`2px solid ${T.good}`,color:T.good,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:18,borderRadius:9,cursor:"pointer"}}>YES</button>
+              <button onClick={()=>{try{recRef.current?.stop();}catch{}captureAndScore("No",q);}} style={{flex:1,padding:14,background:T.bad+"1a",border:`2px solid ${T.bad}`,color:T.bad,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:18,borderRadius:9,cursor:"pointer"}}>NO</button>
+            </div>
+          )}
+          <button onClick={()=>askQ(q)} style={{width:"100%",marginTop:8,padding:9,background:"none",border:`1px solid ${T.purple}44`,color:T.purple,borderRadius:7,cursor:"pointer",fontFamily:"'Share Tech Mono'",fontSize:9}}>↺ REPEAT</button>
+        </div>
+      )}
+      {responses.length>0&&(
+        <div style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:9,padding:10,marginTop:4}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.muted,marginBottom:7}}>COMPLETED BS SCORES</div>
+          {responses.slice(-3).map((r,i)=>(
+            <div key={i} style={{marginBottom:6}}>
+              <div style={{fontSize:11,color:T.text,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>"{r.text}"</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:r.answer==="Yes"?T.good:T.bad}}>→{r.answer}</div><div style={{flex:1}}><BSMeter score={r.bsScore} compact/></div></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// RESULTS
+function Results({session,settings={},onReset,onDelete,onEdit}){
+  const [ai,setAi]=useState(null);const [loading,setLoading]=useState(true);const [progress,setProgress]=useState(0);const [showDel,setShowDel]=useState(false);const [activeTab,setActiveTab]=useState("summary");const [pinUnlocked,setPinUnlocked]=useState(!settings.pinEnabled);
+  const [copyMsg,setCopyMsg]=useState("");
+  const voiceRef=useRef(null);
+  useEffect(()=>{if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=()=>{voiceRef.current=getVoice();};voiceRef.current=getVoice();}speak("Generating your examination report.",{voice:voiceRef.current,rate:0.9});},[]);
+  useEffect(()=>{
+    if(!pinUnlocked)return;
+    const iv=setInterval(()=>setProgress(p=>Math.min(p+Math.random()*5,93)),160);
+    const analyze=async()=>{
+      const profileText=Object.entries(session.profile||{}).map(([k,v])=>`${k}: ${v}`).join(", ");
+      const stdText=(session.responses||[]).map((r,i)=>`Q${i+1}(${r.type}${r.isRepeat?" REPEAT":""}): "${r.text}"→${r.answer}|RT:${r.responseTime}ms|VSA:${r.vsaStress?.level||"?"}|FACIAL:${r.facialDeception?.level||"?"}|RESP:${r.facialCapture?.avgRespRate||"?"}`).join("\n");
+      const customText=(session.customResponses||[]).map((r,i)=>`CQ${i+1}(${r.category}): "${r.text}"→${r.answer}|BS:${r.bsScore}/10|VSA:${r.vsaStress?.level||"?"}|FACIAL:${r.facialDeception?.level||"?"}`).join("\n");
+      const btNote=session.baselines?.rest?.hr?`BT HR baseline: ${session.baselines.rest.hr}bpm, SpO2: ${session.baselines.rest.spO2||"N/A"}%, Skin Temp: ${session.baselines.rest.skinTemp||"N/A"}°F`:"No Bluetooth device connected";
+      const examinerNote=session.examinerNotes?`EXAMINER NOTES: ${session.examinerNotes}`:"";
+      // Local heuristic report — no API required
+      const stdR=session.responses||[];const custR=session.customResponses||[];
+      let dSig=0;
+      stdR.forEach(r=>{if(r.vsaStress?.level==="HIGH")dSig+=2;else if(r.vsaStress?.level==="MODERATE")dSig+=1;if(r.facialDeception?.level==="HIGH")dSig+=2;else if(r.facialDeception?.level==="MODERATE")dSig+=1;if(r.responseTime>4000)dSig+=1;});
+      const maxSig=Math.max(stdR.length,1)*5;const dPct=Math.min(dSig/maxSig,1);
+      const veracityScore=Math.round(100-(dPct*70));
+      const risk=dPct>0.55?"High":dPct>0.3?"Moderate":"Low";
+      const confidence=Math.round(40+Math.min((stdR.length+custR.length)*4,40));
+      const highVSA=stdR.filter(r=>r.vsaStress?.level==="HIGH").length;
+      const highFac=stdR.filter(r=>r.facialDeception?.level==="HIGH").length;
+      const avgRT=stdR.length>0?Math.round(stdR.reduce((a,r)=>a+r.responseTime,0)/stdR.length):0;
+      const avgBSL=custR.length>0?+(custR.reduce((a,r)=>a+r.bsScore,0)/custR.length).toFixed(1):null;
+      const btConn=!!(session.baselines?.rest?.hr);
+      clearInterval(iv);setProgress(100);
+      setTimeout(()=>{setAi({
+        veracityScore,deceptionRisk:risk,confidence,
+        btAnalysis:btConn?`Bluetooth baseline captured: HR ${session.baselines.rest.hr||"N/A"}bpm, SpO2 ${session.baselines.rest.spO2||"N/A"}%. Hardware sensors contributed to physiological calibration.`:"No Bluetooth device connected. Analysis used camera-based PPG and voice stress.",
+        customSummary:custR.length>0?`${custR.length} custom questions scored. Average BS score: ${avgBSL}/10 (${bsLabel(Math.round(avgBSL))}). ${custR.filter(r=>r.bsScore<=4).length} responses flagged likely deceptive.`:"No custom questions administered.",
+        standardSummary:`${stdR.length} questions answered. ${highVSA} with elevated voice stress, ${highFac} with facial markers. Avg response time: ${avgRT}ms.`,
+        conclusion:`${stdR.length+custR.length} total questions. Veracity index: ${veracityScore}/100, ${risk.toLowerCase()} deception risk at ${confidence}% confidence. ${highVSA+highFac>0?`${highVSA+highFac} high-signal responses detected.`:"No significant deception markers found."} Entertainment tool — not legally or medically valid.`,
+        examinerNotes:"Entertainment and research use only. No scientific validity claimed. Not admissible in legal, employment, or medical contexts.",
+        verbalSummary:`Examination complete. Veracity score ${veracityScore} out of 100. Deception risk rated ${risk}.`
+      });setLoading(false);},400);
+    };
+    analyze();return()=>clearInterval(iv);
+  },[pinUnlocked]);
+
+  const shareReport=()=>{
+    const custom=session.customResponses||[];const std=session.responses||[];
+    let text=`VERITEX AI POLYGRAPH REPORT\n${new Date().toLocaleString()}\n\n`;
+    if(ai){text+=`VERACITY SCORE: ${ai.veracityScore}/100\nDECEPTION RISK: ${ai.deceptionRisk}\nCONFIDENCE: ${ai.confidence}%\n\n`;}
+    text+=`STANDARD EXAM (${std.length} questions):\n`;
+    std.forEach((r,i)=>{text+=`Q${i+1}: "${r.text}" → ${r.answer} (RT:${r.responseTime}ms VSA:${r.vsaStress?.level||"?"} FACIAL:${r.facialDeception?.level||"?"})\n`;});
+    if(custom.length>0){text+=`\nCUSTOM EXAM (${custom.length} questions):\n`;custom.forEach((r,i)=>{text+=`CQ${i+1}: "${r.text}" → ${r.answer} BS:${r.bsScore}/10 (${r.bsLabel})\n`;});}
+    if(ai?.conclusion)text+=`\nCONCLUSION: ${ai.conclusion}\n`;
+    if(session.examinerNotes)text+=`\nEXAMINER NOTES: ${session.examinerNotes}\n`;
+    text+=`\n⚠️ For entertainment and research purposes only.`;
+    if(navigator.clipboard){navigator.clipboard.writeText(text).then(()=>{setCopyMsg("Copied!");setTimeout(()=>setCopyMsg(""),2000);}).catch(()=>setCopyMsg("Copy failed"));}
+    else{const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);setCopyMsg("Copied!");setTimeout(()=>setCopyMsg(""),2000);}
+  };
+
+  if(settings.pinEnabled&&!pinUnlocked)return <PINGate correctPin={settings.pin} onUnlock={()=>setPinUnlocked(true)}/>;
+  const customResponses=session.customResponses||[];const avgBS=customResponses.length>0?Math.round(customResponses.reduce((a,r)=>a+r.bsScore,0)/customResponses.length):null;
+  if(loading)return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:28}}>
+      <div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:24,color:T.white,marginBottom:3}}>FULL ANALYSIS</div>
+      <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,marginBottom:28}}>BLUETOOTH · VSA · FACIAL · RESP · BS SCORES</div>
+      {["Tabulating Bluetooth biometrics","Computing respiration patterns","Analyzing speaking rate deviations","Mapping micro-pause signatures","Cross-referencing BS scores","Generating comprehensive report"].map((s,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:9,opacity:progress>i*16?1:0.15,transition:"opacity 0.4s",width:"100%",maxWidth:340}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:progress>(i+1)*16?T.good:T.gold,flexShrink:0,animation:progress>i*16&&progress<(i+1)*16?"pulse 0.7s infinite":"none"}}/>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:progress>(i+1)*16?T.good:T.text}}>{s}</div>
+        </div>
+      ))}
+      <div style={{width:"100%",maxWidth:340,marginTop:16}}><div style={{height:3,background:T.border,borderRadius:2}}><div style={{height:"100%",width:`${progress}%`,background:`linear-gradient(90deg,${T.gold},${T.accent})`,borderRadius:2,transition:"width 0.3s"}}/></div></div>
+    </div>
+  );
+  if(!ai)return null;
+  const sc=ai.veracityScore>70?T.good:ai.veracityScore>45?T.warn:T.bad;const rc={Low:T.good,Moderate:T.warn,High:T.bad,Inconclusive:T.muted}[ai.deceptionRisk]||T.muted;
+  const Sec=({title,color,children,printClass=""})=>(<div className={`print-section ${printClass}`} style={{background:T.panel,border:`1px solid ${T.border}`,borderRadius:10,padding:14,marginBottom:12}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color,letterSpacing:"0.12em",marginBottom:10}}>{title}</div>{children}</div>);
+  return(
+    <div style={{minHeight:"100vh",padding:"24px 18px",maxWidth:520,margin:"0 auto"}}>
+      <div style={{marginBottom:12}}>
+        <div style={{fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:24,color:T.white}}>EXAMINATION REPORT</div>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.muted}}>{new Date().toLocaleString().toUpperCase()}</div>
+        <div style={{width:50,height:2,background:T.gold,marginTop:8}}/>
+      </div>
+
+      {/* Score cards */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9,marginBottom:12}}>
+        <div style={{background:T.panel,border:`1px solid ${sc}44`,borderRadius:9,padding:"12px 7px",textAlign:"center"}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:25,color:sc}}>{ai.veracityScore}</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted,marginTop:2}}>VERACITY</div></div>
+        <div style={{background:T.panel,border:`1px solid ${rc}44`,borderRadius:9,padding:"12px 7px",textAlign:"center"}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:11,color:rc,lineHeight:1.3}}>{ai.deceptionRisk.toUpperCase()}</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted,marginTop:2}}>RISK</div></div>
+        {avgBS!==null?<div style={{background:T.panel,border:`1px solid ${bsColor(avgBS)}44`,borderRadius:9,padding:"12px 7px",textAlign:"center"}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:25,color:bsColor(avgBS),animation:"bsGlow 2s ease infinite"}}>{avgBS}</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted,marginTop:2}}>AVG BS/10</div></div>:<div style={{background:T.panel,border:`1px solid ${T.accent}44`,borderRadius:9,padding:"12px 7px",textAlign:"center"}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:25,color:T.accent}}>{ai.confidence}%</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted,marginTop:2}}>CONFIDENCE</div></div>}
+      </div>
+
+      {/* Action buttons */}
+      <div className="no-print" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+        <button onClick={()=>speak(`Veracity: ${ai.veracityScore}. Risk: ${ai.deceptionRisk}. ${avgBS!==null?`Average BS: ${avgBS} out of 10.`:""} ${ai.conclusion}`,{voice:getVoice(),rate:0.85})} style={{padding:"10px 4px",background:T.purple+"22",border:`1px solid ${T.purple}55`,color:T.purple,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:13,borderRadius:7,cursor:"pointer"}}>🔊 READ</button>
+        <button onClick={shareReport} style={{padding:"10px 4px",background:T.teal+"22",border:`1px solid ${T.teal}55`,color:T.teal,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:13,borderRadius:7,cursor:"pointer"}}>{copyMsg||"📋 COPY"}</button>
+        <button onClick={()=>window.print()} style={{padding:"10px 4px",background:T.mint+"22",border:`1px solid ${T.mint}55`,color:T.mint,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:13,borderRadius:7,cursor:"pointer"}}>🖨 PDF</button>
+      </div>
+
+      {/* Tabs */}
+      <div className="no-print" style={{display:"flex",gap:7,marginBottom:12}}>
+        {[["summary","SUMMARY"],["chart","CHART"],["custom","CUSTOM BS"],["standard","STANDARD"]].map(([tab,label])=>(
+          <button key={tab} onClick={()=>setActiveTab(tab)} style={{flex:1,padding:"8px 3px",background:activeTab===tab?(tab==="custom"?T.gold+"22":T.accent+"22"):T.panel,border:`1px solid ${activeTab===tab?(tab==="custom"?T.gold:T.accent):T.border}`,color:activeTab===tab?(tab==="custom"?T.gold:T.accent):T.muted,borderRadius:6,cursor:"pointer",fontFamily:"'Share Tech Mono'",fontSize:8,letterSpacing:"0.04em",transition:"all 0.2s"}}>{label}</button>
+        ))}
+      </div>
+
+      {/* CHART TAB */}
+      {activeTab==="chart"&&(
+        <div>
+          <Sec title="MULTI-MODAL TREND CHART" color={T.accent}>
+            <TrendChart responses={session.responses||[]} customResponses={session.customResponses||[]}/>
+            <div style={{display:"flex",gap:8,marginTop:10,fontSize:11,color:T.muted,flexWrap:"wrap"}}>
+              {[{c:T.bad,l:"HR Delta"},{c:T.teal,l:"VSA Score"},{c:T.rose,l:"Facial Deception"},{c:T.gold,l:"BS×10"}].map(l=><div key={l.l} style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:3,background:l.c,borderRadius:1}}/><span>{l.l}</span></div>)}
+            </div>
+          </Sec>
+          {session.baselines?.rest&&(
+            <Sec title="BLUETOOTH SENSOR BASELINE" color={T.mint}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                {[{l:"HR",v:session.baselines.rest.hr||"N/A",u:"bpm",c:T.bad},{l:"HRV",v:session.baselines.rest.hrv||"N/A",u:"ms",c:T.gold},{l:"SpO2",v:session.baselines.rest.spO2||"N/A",u:"%",c:T.accent},{l:"TEMP",v:session.baselines.rest.skinTemp||"N/A",u:"°F",c:T.warn},{l:"RESP",v:session.baselines.rest.facialBaseline?.avgRespRate||"N/A",u:"/min",c:T.teal},{l:"VSA BASE",v:session.baselines.rest.vsaBaseline?Math.round(session.baselines.rest.vsaBaseline.avgPitch)+"Hz":"N/A",u:"",c:T.purple}].map(s=>(
+                  <div key={s.l} style={{background:T.panel2,borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
+                    <div style={{fontFamily:"'Share Tech Mono'",fontSize:15,color:s.c,lineHeight:1}}>{s.v}</div>
+                    <div style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted}}>{s.l} {s.u}</div>
+                  </div>
+                ))}
+              </div>
+            </Sec>
+          )}
+        </div>
+      )}
+
+      {/* SUMMARY TAB */}
+      {activeTab==="summary"&&(
+        <>
+          <Sec title="INTEGRATED CONCLUSION" color={T.accent}><div style={{fontSize:13,color:T.text,lineHeight:1.7}}>{ai.conclusion}</div></Sec>
+          {ai.btAnalysis&&<Sec title="BLUETOOTH SENSOR ANALYSIS" color={T.mint}><div style={{fontSize:13,color:T.text,lineHeight:1.7}}>{ai.btAnalysis}</div></Sec>}
+          {ai.customSummary&&<Sec title="CUSTOM QUESTION ANALYSIS" color={T.gold}><div style={{fontSize:13,color:T.text,lineHeight:1.7}}>{ai.customSummary}</div></Sec>}
+          <Sec title="STANDARD EXAMINATION" color={T.accent}><div style={{fontSize:13,color:T.text,lineHeight:1.7}}>{ai.standardSummary}</div></Sec>
+          {session.examinerNotes&&<Sec title="EXAMINER FIELD NOTES" color={T.purple}><div style={{fontSize:13,color:T.text,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{session.examinerNotes}</div></Sec>}
+          <Sec title="EXAMINER NOTES" color={T.warn}><div style={{fontSize:13,color:T.text,lineHeight:1.7}}>{ai.examinerNotes}</div></Sec>
+          <div style={{fontSize:11,color:T.muted,lineHeight:1.7,padding:"11px 13px",background:T.panel,borderRadius:8,borderLeft:`3px solid ${T.muted}`,marginBottom:14}}>⚠️ Entertainment and research only. Not for legal, medical, or employment decisions.</div>
+        </>
+      )}
+
+      {/* CUSTOM BS TAB */}
+      {activeTab==="custom"&&(
+        <>
+          {customResponses.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:T.muted,fontFamily:"'Share Tech Mono'",fontSize:12}}>No custom questions were administered.</div>:(
+            <>
+              {avgBS!==null&&<div style={{background:T.panel,border:`1px solid ${bsColor(avgBS)}44`,borderRadius:12,padding:18,marginBottom:12,textAlign:"center"}}><BSMeter score={avgBS} label="AVERAGE CUSTOM QUESTION BS SCORE"/></div>}
+              <Sec title="QUESTION-BY-QUESTION BS SCORES" color={T.gold}>
+                {customResponses.map((r,i)=>(
+                  <div key={i} style={{background:T.panel2,border:`2px solid ${bsColor(r.bsScore)}33`,borderRadius:10,padding:13,marginBottom:11,animation:`slideIn 0.3s ease ${i*0.05}s both`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.muted}}>CQ{i+1} · {r.category?.toUpperCase()||"CUSTOM"}</div><div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:r.answer==="Yes"?T.good:T.bad}}>→ {r.answer}</div></div>
+                    <div style={{fontSize:14,color:T.white,fontWeight:600,marginBottom:9,lineHeight:1.4}}>"{r.text}"</div>
+                    <BSMeter score={r.bsScore} compact/>
+                    {r.bsRationale&&<div style={{fontSize:11,color:T.muted,marginTop:7,lineHeight:1.5,padding:"5px 9px",background:T.panel,borderRadius:5}}>{r.bsRationale}</div>}
+                    <div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap"}}>
+                      <span style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.muted}}>RT:{r.responseTime}ms</span>
+                      <span style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:r.vsaStress?.level==="HIGH"?T.bad:r.vsaStress?.level==="MODERATE"?T.warn:T.good}}>VSA:{r.vsaStress?.level||"?"}</span>
+                      <span style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:r.facialDeception?.level==="HIGH"?T.bad:r.facialDeception?.level==="MODERATE"?T.warn:T.good}}>👁:{r.facialDeception?.level||"?"}</span>
+                      {r.facialCapture?.avgRespRate&&<span style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.teal}}>RESP:{r.facialCapture.avgRespRate}/m</span>}
+                      {r.btData?.spO2&&<span style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:T.mint}}>SpO2:{r.btData.spO2}%</span>}
+                    </div>
+                  </div>
+                ))}
+              </Sec>
+            </>
+          )}
+        </>
+      )}
+
+      {/* STANDARD TAB */}
+      {activeTab==="standard"&&(
+        <Sec title={`STANDARD Q&A (${session.responses?.length||0})`} color={T.accent}>
+          {(session.responses||[]).map((r,i)=>(
+            <div key={i} style={{borderLeft:`3px solid ${r.isRepeat?T.gold:T.border}`,paddingLeft:10,marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                <span style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:r.isRepeat?T.gold:T.muted}}>Q{i+1}{r.isRepeat?" ↺":""} · {r.type?.toUpperCase()}</span>
+                <div style={{display:"flex",gap:4}}>
+                  <span style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:r.facialDeception?.level==="HIGH"?T.bad:r.facialDeception?.level==="MODERATE"?T.warn:T.good,background:(r.facialDeception?.level==="HIGH"?T.bad:r.facialDeception?.level==="MODERATE"?T.warn:T.good)+"22",padding:"1px 5px",borderRadius:7}}>👁 {r.facialDeception?.level||"?"}</span>
+                  <span style={{fontFamily:"'Share Tech Mono'",fontSize:7,color:r.vsaStress?.level==="HIGH"?T.bad:r.vsaStress?.level==="MODERATE"?T.warn:T.good,background:(r.vsaStress?.level==="HIGH"?T.bad:r.vsaStress?.level==="MODERATE"?T.warn:T.good)+"22",padding:"1px 5px",borderRadius:7}}>🎤 {r.vsaStress?.level||"?"}</span>
+                </div>
+              </div>
+              <div style={{fontSize:12,color:T.text,marginBottom:2}}>"{r.text}"</div>
+              <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:r.answer==="Yes"?T.good:T.bad}}>→ {r.answer} · RT:{r.responseTime}ms{r.btData?.hr?` · BT-HR:${r.btData.hr}`:""}</div>
+            </div>
+          ))}
+        </Sec>
+      )}
+
+      {/* Data management */}
+      <div className="no-print" style={{background:"#150808",border:`1px solid ${T.bad}44`,borderRadius:10,padding:14,marginBottom:14}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:T.bad,marginBottom:8}}>DATA RETENTION{settings.autoDeleteHours?` · AUTO-DELETE IN ${settings.autoDeleteHours}h`:""}</div>
+        <div style={{fontSize:12,color:T.text,lineHeight:1.6,marginBottom:10}}>All data stored locally on this device only.</div>
+        {!showDel?<button onClick={()=>setShowDel(true)} style={{width:"100%",padding:11,background:T.bad+"22",border:`1px solid ${T.bad}`,color:T.bad,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:15,borderRadius:6,cursor:"pointer"}}>🗑 DELETE ALL SESSION DATA</button>:
+        <div><div style={{fontSize:13,color:T.warn,marginBottom:10,textAlign:"center"}}>Permanently delete? Cannot be undone.</div><div style={{display:"flex",gap:10}}><button onClick={()=>setShowDel(false)} style={{flex:1,padding:11,background:"none",border:`1px solid ${T.border}`,color:T.muted,borderRadius:6,cursor:"pointer",fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:14}}>CANCEL</button><button onClick={onDelete} style={{flex:1,padding:11,background:T.bad,border:"none",color:T.white,borderRadius:6,cursor:"pointer",fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:14}}>CONFIRM DELETE</button></div></div>}
+      </div>
+      <div className="no-print" style={{display:"flex",gap:10,marginBottom:48}}>
+        <button onClick={onEdit} style={{flex:1,padding:13,background:T.gold+"22",border:`1px solid ${T.gold}`,color:T.gold,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:15,letterSpacing:"0.08em",borderRadius:8,cursor:"pointer"}}>✏ EDIT Q's</button>
+        <button onClick={onReset} style={{flex:1,padding:13,background:"none",border:`1px solid ${T.accent}`,color:T.accent,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:15,letterSpacing:"0.08em",borderRadius:8,cursor:"pointer"}}>↺ NEW EXAM</button>
+      </div>
+    </div>
+  );
+}
+
+// SPLASH
+function Splash({onNew,onResume,hasSession,onEditQuestions,onSettings,customCount,bt}){
+  const [ready,setReady]=useState(false);
+  useEffect(()=>{setTimeout(()=>setReady(true),800);setTimeout(()=>speak("Welcome to VERITEX version 8. The AI polygraph with Bluetooth biometrics, voice stress analysis, facial deception detection, and custom BS scoring. Tap Begin to start.",{voice:getVoice(),rate:0.88}),1000);},[] );
+  return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden",background:`radial-gradient(ellipse at 50% 38%,#08192a,${T.bg} 65%)`}}>
+      <div style={{position:"absolute",inset:0,backgroundImage:`linear-gradient(${T.border} 1px,transparent 1px),linear-gradient(90deg,${T.border} 1px,transparent 1px)`,backgroundSize:"50px 50px",opacity:0.12}}/>
+      {ready&&<div style={{textAlign:"center",animation:"fadeUp 0.7s ease forwards",padding:"0 20px"}}>
+        <div style={{position:"relative",width:110,height:110,margin:"0 auto 20px"}}>
+          <div style={{position:"absolute",inset:0,borderRadius:"50%",border:`2px solid ${T.accent}`,animation:"ringOut 2.5s ease-out infinite"}}/>
+          <div style={{position:"absolute",inset:12,borderRadius:"50%",border:`1px solid ${T.gold}33`,animation:"spin 14s linear infinite"}}/>
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:34}}>🧠</div>
+        </div>
+        <div style={{fontFamily:"'Barlow Condensed'",fontWeight:900,fontSize:44,letterSpacing:"0.22em",color:T.white}}>VERITEX</div>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:T.accent,letterSpacing:"0.28em",marginBottom:3}}>AI VOICE POLYGRAPH · v8.0</div>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.muted,letterSpacing:"0.08em",marginBottom:36}}>BLUETOOTH · PPG · VSA · FACIAL · RESP · BS SCORES</div>
+
+        {/* BT connection on splash */}
+        {bt&&<div style={{marginBottom:16,width:"100%",maxWidth:300}}><BluetoothPanel bt={bt}/></div>}
+
+        <div style={{display:"flex",flexDirection:"column",gap:9,width:300}}>
+          <button onClick={onNew} style={{padding:"15px 32px",background:T.accent,border:"none",color:T.bg,fontFamily:"'Barlow Condensed'",fontWeight:800,fontSize:18,letterSpacing:"0.18em",borderRadius:8,cursor:"pointer"}}>BEGIN EXAMINATION</button>
+          <button onClick={onEditQuestions} style={{padding:"13px 28px",background:T.gold+"22",border:`2px solid ${T.gold}`,color:T.gold,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:15,letterSpacing:"0.12em",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            📋 {customCount>0?`QUESTION BANK (${customCount})`:"QUESTION BANK"}
+          </button>
+          <div style={{display:"flex",gap:9}}>
+            <button onClick={onSettings} style={{flex:1,padding:"12px 8px",background:"none",border:`1px solid ${T.border}`,color:T.muted,fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:14,borderRadius:8,cursor:"pointer"}}>⚙ SETTINGS</button>
+            {hasSession&&<button onClick={onResume} style={{flex:2,padding:"12px 8px",background:"none",border:`1px solid ${T.gold}`,color:T.gold,fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:14,letterSpacing:"0.1em",borderRadius:8,cursor:"pointer"}}>⟳ RESUME</button>}
+          </div>
+        </div>
+        <div style={{marginTop:36,fontFamily:"'Share Tech Mono'",fontSize:9,color:T.muted,lineHeight:1.9}}>FOR ENTERTAINMENT & RESEARCH ONLY<br/>NOT A LEGALLY ADMISSIBLE INSTRUMENT</div>
+      </div>}
+    </div>
+  );
+}
+
+// APP ROOT
+function App(){
+  const [phase,setPhase]=useState("splash");
+  const [session,setSession]=useState(()=>loadSess()||{profile:{},baselines:{},responses:[],customResponses:[],examinerNotes:"",startedAt:null});
+  const [customQuestions,setCustomQuestions]=useState(()=>{try{return JSON.parse(localStorage.getItem("veritex_questions")||"[]");}catch{return [];}});
+  const [settings,setSettings]=useState(()=>loadSettings());
+  const [examinerNotes,setExaminerNotes]=useState("");
+  const bt=useBluetoothSensors();
+
+  const update=useCallback((patch)=>{setSession(prev=>{const u={...prev,...patch};saveSess(u);return u;});},[]);
+  const saveQuestions=(qs)=>{setCustomQuestions(qs);try{localStorage.setItem("veritex_questions",JSON.stringify(qs));}catch{}};
+  const saveSettingsAndBack=(s)=>{setSettings(s);saveSettings(s);setPhase("splash");};
+
+  useEffect(()=>{checkAutoDelete();},[]);
+
+  const hasSession=(()=>{const s=loadSess();return !!(s?.profile&&Object.keys(s.profile).length>3);})();
+  const customCount=customQuestions.filter(q=>q.text?.trim()).length;
+
+  const handleResume=()=>{
+    const s=loadSess();if(!s)return;setSession(s);setExaminerNotes(s.examinerNotes||"");
+    if(s.customResponses?.length>=customCount&&customCount>0)setPhase("results");
+    else if(s.responses?.length>=10)setPhase("hub");
+    else if(s.baselines?.rest)setPhase("test");
+    else if(Object.keys(s.profile||{}).length>3)setPhase("calibration");
+    else setPhase("questionnaire");
+  };
+  const handleDelete=()=>{clearSess();setSession({profile:{},baselines:{},responses:[],customResponses:[],examinerNotes:"",startedAt:null});setExaminerNotes("");setPhase("splash");};
+
+  const phases=["questionnaire","calibration","test","hub","customExam","results"];const pIdx=phases.indexOf(phase);
+
+  return(
+    <>
+      <style>{CSS}</style>
+      {phase!=="splash"&&phase!=="editQuestions"&&phase!=="settings"&&(
+        <div className="no-print" style={{position:"sticky",top:0,zIndex:100,background:T.bg+"f4",backdropFilter:"blur(14px)",borderBottom:`1px solid ${T.border}`,padding:"8px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:11,color:T.accent,letterSpacing:"0.12em"}}>VERITEX</div>
+          <div style={{display:"flex",gap:5}}>{phases.map((p,i)=><div key={p} style={{width:7,height:7,borderRadius:"50%",background:pIdx>i?T.good:pIdx===i?T.accent:T.border,transition:"background 0.3s"}}/>)}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {bt.btConnected&&<div style={{width:6,height:6,borderRadius:"50%",background:T.mint,animation:"btPulse 2s infinite"}}/>}
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:8,color:T.muted}}>{phase.toUpperCase()}</div>
+          </div>
+        </div>
+      )}
+
+      {phase==="splash"&&<Splash onNew={()=>{update({startedAt:Date.now(),customResponses:[],examinerNotes:""});setExaminerNotes("");setPhase("questionnaire");}} onResume={handleResume} hasSession={hasSession} onEditQuestions={()=>setPhase("editQuestions")} onSettings={()=>setPhase("settings")} customCount={customCount} bt={bt}/>}
+      {phase==="settings"&&<SettingsScreen settings={settings} onSave={saveSettingsAndBack} onBack={()=>setPhase("splash")}/>}
+      {phase==="editQuestions"&&<QuestionBankEditor initialQuestions={customQuestions} onSave={(qs)=>{saveQuestions(qs);setPhase("splash");}} onCancel={()=>setPhase("splash")}/>}
+      {phase==="questionnaire"&&<VoiceQuestionnaire existing={session.profile} onComplete={p=>{update({profile:p});setPhase("calibration");}}/>}
+      {phase==="calibration"&&<Calibration settings={settings} bt={bt} onComplete={b=>{update({baselines:b});setPhase("test");}}/>}
+      {phase==="test"&&<StandardTest profile={session.profile} baselines={session.baselines} settings={settings} bt={bt} onComplete={r=>{update({responses:r});setPhase("hub");}}/>}
+      {phase==="hub"&&<ExaminerHub session={session} customQuestions={customQuestions} onStartCustom={()=>setPhase("customExam")} onEditQuestions={()=>setPhase("editQuestions")} onProceedToResults={()=>setPhase("results")} examinerNotes={examinerNotes} setExaminerNotes={notes=>{setExaminerNotes(notes);update({examinerNotes:notes});}}/>}
+      {phase==="customExam"&&<CustomExamination session={session} customQuestions={customQuestions.filter(q=>q.text?.trim())} settings={settings} bt={bt} onComplete={customResponses=>{update({customResponses});setPhase("results");}}/>}
+      {phase==="results"&&<Results session={session} settings={settings} onReset={()=>{update({profile:{},baselines:{},responses:[],customResponses:[],examinerNotes:"",startedAt:Date.now()});setExaminerNotes("");setPhase("questionnaire");}} onDelete={handleDelete} onEdit={()=>setPhase("editQuestions")}/>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+
+
+</script>
+</body>
+</html>
