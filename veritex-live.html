@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>VERITEX LIVE · AI Polygraph Broadcast</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body,#root{width:100%;height:100%;background:#000;overflow:hidden;}
+body{font-family:'Barlow Condensed',sans-serif;-webkit-tap-highlight-color:transparent;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes heartbeat{0%,100%{transform:scale(1)}15%{transform:scale(1.3)}30%{transform:scale(1)}}
+@keyframes scanline{0%{top:-2px}100%{top:100vh}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{text-shadow:0 0 8px currentColor}50%{text-shadow:0 0 28px currentColor,0 0 52px currentColor}}
+@keyframes barPulse{0%,100%{transform:scaleY(0.2)}50%{transform:scaleY(1)}}
+@keyframes ripple{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.5);opacity:0}}
+@keyframes verdictSlam{0%{transform:scale(2.5);opacity:0}60%{transform:scale(0.97)}100%{transform:scale(1);opacity:1}}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+@keyframes redAlert{0%,100%{background:rgba(255,37,80,0.1)}50%{background:rgba(255,37,80,0.35)}}
+@keyframes greenAlert{0%,100%{background:rgba(0,255,136,0.05)}50%{background:rgba(0,255,136,0.2)}}
+@keyframes spinDial{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const _of=window.fetch.bind(window);
+window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("api.anthropic.com")&&window.VERITEX_API_KEY){opts=opts||{};opts.headers=Object.assign({},opts.headers||{},{"x-api-key":window.VERITEX_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"});}return _of(url,opts);};
+</script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ═══════════════════════════════════════════════════════
+// CONSTANTS & QUESTIONS
+// ═══════════════════════════════════════════════════════
+const LIVE_QUESTIONS = [
+  "Is your name the name you gave at the start of this session?",
+  "Have you ever stolen anything of significant value?",
+  "Are you currently telling the complete truth in this examination?",
+  "Have you ever seriously deceived someone who trusted you?",
+  "Is there something important you are hiding right now?",
+  "Have you ever betrayed a close friend or partner?",
+  "Are you being completely honest about your past?",
+  "Have you ever done something you are deeply ashamed of?",
+  "Is everything you have told us today the truth?",
+  "Do you have any secrets that could harm others if revealed?",
+];
+
+// ═══════════════════════════════════════════════════════
+// VOICE + SPEECH
+// ═══════════════════════════════════════════════════════
+function getVoice(){const v=window.speechSynthesis?.getVoices()||[];return v.find(x=>/Google US English|Alex|Daniel|Samantha/i.test(x.name))||v.find(x=>x.lang?.startsWith("en-US"))||v[0]||null;}
+function speak(text,opts={}){return new Promise(r=>{if(!window.speechSynthesis){r();return;}window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.rate=opts.rate||0.88;u.pitch=opts.pitch||0.95;u.volume=opts.volume||1;if(opts.voice)u.voice=opts.voice;u.onend=r;u.onerror=r;window.speechSynthesis.speak(u);});}
+function parseYesNo(t){const s=t.toLowerCase();if(/\b(yes|yeah|yep|correct|true|right|absolutely|definitely|certainly|affirmative)\b/.test(s))return"Yes";if(/\b(no|nope|negative|false|never|nah|incorrect|wrong|not|deny)\b/.test(s))return"No";return null;}
+
+// ═══════════════════════════════════════════════════════
+// FACIAL ANALYSIS ENGINE (lightweight for live mode)
+// ═══════════════════════════════════════════════════════
+class LiveFacialEngine {
+  constructor(){this.baseline=null;this.history=[];this.blinkHistory=[];this.blinkState="open";this.blinkStart=0;this.lastFrame=null;}
+  process(imageData,w,h,ts){
+    const d=imageData.data;
+    // Skin detection
+    let sp=0,cx=0,cy=0,minX=w,maxX=0,minY=h,maxY=0;
+    for(let y=0;y<h;y+=2){for(let x=0;x<w;x+=2){const i=(y*w+x)*4;const r=d[i],g=d[i+1],b=d[i+2];if(r>60&&g>40&&b>20&&r>g&&r>b&&r-b>20&&r<250){sp++;cx+=x;cy+=y;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}}}
+    const face=sp>50?{minX,maxX,minY,maxY,width:maxX-minX,height:maxY-minY,confidence:Math.min(sp/(w*h*0.08),1)}:null;
+    // Motion
+    let motion=0;
+    if(this.lastFrame){let diff=0,cnt=0;for(let i=0;i<d.length;i+=20){diff+=Math.abs(d[i]-this.lastFrame[i]);cnt++;}motion=cnt>0?diff/cnt/255:0;}
+    this.lastFrame=new Uint8Array(d);
+    // Eye brightness for blink
+    let eyeBright=0.5;
+    if(face&&face.height>10){const eT=Math.max(0,Math.round(face.minY+face.height*0.1));const eB=Math.min(h,Math.round(face.minY+face.height*0.4));let s=0,c=0;for(let y=eT;y<eB;y+=2){for(let x=face.minX;x<face.maxX;x+=2){const i=(y*w+x)*4;s+=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;c++;}}eyeBright=c>0?s/c/255:0.5;}
+    // Blink detection
+    const isClosed=eyeBright<0.36;
+    if(isClosed&&this.blinkState==="open"){this.blinkState="closed";this.blinkStart=ts;}
+    else if(!isClosed&&this.blinkState==="closed"){const dur=ts-this.blinkStart;if(dur>50&&dur<500)this.blinkHistory.push({ts,dur,prolonged:dur>200});this.blinkState="open";}
+    this.blinkHistory=this.blinkHistory.filter(b=>b.ts>ts-30000);
+    const blinkRate=this.blinkHistory.filter(b=>b.ts>ts-30000).length*2;
+    // Gaze
+    let gazeDir="CENTER";
+    if(face){const fCX=(face.minX+face.maxX)/2;const fw=face.width;const relX=(fCX-w/2)/(w/2);if(relX<-0.15)gazeDir="LEFT";else if(relX>0.15)gazeDir="RIGHT";}
+    const fr={ts,faceDetected:!!face&&face.confidence>0.1,motion,blinkRate,gazeDir,eyeBright,faceConf:face?.confidence||0};
+    this.history.push(fr);if(this.history.length>120)this.history.shift();
+    return fr;
+  }
+  setBaseline(){const recent=this.history.slice(-60);if(recent.length<5)return false;this.baseline={motion:recent.reduce((a,f)=>a+f.motion,0)/recent.length,blinkRate:recent.reduce((a,f)=>a+f.blinkRate,0)/recent.length,gazeCenter:recent.filter(f=>f.gazeDir==="CENTER").length/recent.length};return true;}
+  deceptionLevel(){
+    if(!this.baseline||this.history.length<10)return 0.5;
+    const recent=this.history.slice(-30);
+    let score=0.5;
+    const motAvg=recent.reduce((a,f)=>a+f.motion,0)/recent.length;
+    const blinkAvg=recent.reduce((a,f)=>a+f.blinkRate,0)/recent.length;
+    const gazeCenter=recent.filter(f=>f.gazeDir==="CENTER").length/recent.length;
+    const motDev=(motAvg-this.baseline.motion)/Math.max(this.baseline.motion,0.01);
+    const blinkDev=Math.abs(blinkAvg-this.baseline.blinkRate);
+    const gazeDev=this.baseline.gazeCenter-gazeCenter;
+    if(motDev>0.5)score+=0.15*Math.min(motDev,2);
+    if(blinkDev>8)score+=0.15*Math.min(blinkDev/20,1);
+    if(gazeDev>0.3)score+=0.2*Math.min(gazeDev/0.6,1);
+    return Math.max(0,Math.min(1,score));
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// VOICE STRESS (lightweight live)
+// ═══════════════════════════════════════════════════════
+class LiveVSA {
+  constructor(){this.baseline=null;this.pitchHistory=[];this.rmsHistory=[];}
+  process(timeDomain,freqDomain,sampleRate){
+    let rms=0;for(let i=0;i<timeDomain.length;i++)rms+=timeDomain[i]*timeDomain[i];rms=Math.sqrt(rms/timeDomain.length);
+    // Pitch via autocorrelation
+    let pitch=0;const M=Math.floor(timeDomain.length/2);let bc=0,bo=-1,lc=1;
+    for(let o=8;o<M;o++){let c=0;for(let i=0;i<M;i++)c+=Math.abs(timeDomain[i]-timeDomain[i+o]);c=1-c/M;if(c>0.85&&c>lc){bc=c;bo=o;break;}if(c>bc){bc=c;bo=o;}lc=c;}
+    if(bc>0.5&&bo>0)pitch=sampleRate/bo;
+    this.pitchHistory.push({pitch,rms});if(this.pitchHistory.length>90)this.pitchHistory.shift();
+    this.rmsHistory.push(rms);if(this.rmsHistory.length>90)this.rmsHistory.shift();
+    const voiced=this.pitchHistory.filter(p=>p.pitch>80&&p.pitch<500);
+    const avgPitch=voiced.length>0?voiced.reduce((a,b)=>a+b.pitch,0)/voiced.length:0;
+    const pitchVar=voiced.length>1?Math.sqrt(voiced.reduce((a,b)=>a+(b.pitch-avgPitch)**2,0)/voiced.length):0;
+    return{pitch:Math.round(pitch),rms:+rms.toFixed(4),avgPitch:+avgPitch.toFixed(1),pitchVariance:+pitchVar.toFixed(1),voiced:rms>0.015&&pitch>80&&pitch<500};
+  }
+  setBaseline(feat){this.baseline={avgPitch:feat.avgPitch,pitchVariance:feat.pitchVariance};}
+  stressLevel(feat){
+    if(!this.baseline||this.baseline.avgPitch===0)return 0.5;
+    let s=0.5;
+    const pitchDev=Math.abs(feat.avgPitch-this.baseline.avgPitch)/Math.max(this.baseline.avgPitch,1);
+    const varDev=Math.abs(feat.pitchVariance-this.baseline.pitchVariance)/Math.max(this.baseline.pitchVariance,5);
+    if(pitchDev>0.15)s+=0.2*Math.min(pitchDev/0.5,1);
+    if(varDev>0.4)s+=0.2*Math.min(varDev,1);
+    return Math.max(0,Math.min(1,s));
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// BS METER NEEDLE COMPONENT
+// ═══════════════════════════════════════════════════════
+function BSNeedle({value, animate=true}){
+  // value: 0=False, 0.5=Uncertain, 1=True
+  // needle angle: -80deg (False) to +80deg (True)
+  const angle = -80 + value * 160;
+  const color = value > 0.66 ? '#00ff88' : value > 0.4 ? '#ffc947' : '#ff2550';
+  const label = value > 0.66 ? 'TRUE' : value > 0.4 ? 'UNCERTAIN' : 'FALSE';
+
+  return (
+    <div style={{position:"relative",width:"100%",paddingBottom:"6px"}}>
+      {/* Gauge arc */}
+      <svg viewBox="0 0 300 160" style={{width:"100%",display:"block",filter:"drop-shadow(0 0 12px rgba(0,0,0,0.8))"}}>
+        {/* Background arc segments */}
+        <defs>
+          <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#ff2550"/>
+            <stop offset="35%" stopColor="#ff8c3a"/>
+            <stop offset="50%" stopColor="#ffc947"/>
+            <stop offset="65%" stopColor="#7fff6a"/>
+            <stop offset="100%" stopColor="#00ff88"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        {/* Outer ring */}
+        <path d="M 20 145 A 130 130 0 0 1 280 145" fill="none" stroke="#0a0a0a" strokeWidth="28"/>
+        <path d="M 20 145 A 130 130 0 0 1 280 145" fill="none" stroke="url(#arcGrad)" strokeWidth="22" opacity="0.9"/>
+        {/* Tick marks */}
+        {[-80,-60,-40,-20,0,20,40,60,80].map((a,i)=>{
+          const rad=(a-90)*Math.PI/180;
+          const x1=150+115*Math.cos(rad);const y1=145+115*Math.sin(rad);
+          const x2=150+100*Math.cos(rad);const y2=145+100*Math.sin(rad);
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.4)" strokeWidth={i===4?2.5:1.5}/>;
+        })}
+        {/* Labels */}
+        <text x="22" y="138" fill="#ff2550" fontSize="13" fontFamily="'Orbitron'" fontWeight="700" textAnchor="middle">FALSE</text>
+        <text x="150" y="30" fill="#ffc947" fontSize="11" fontFamily="'Orbitron'" fontWeight="700" textAnchor="middle">UNCERTAIN</text>
+        <text x="278" y="138" fill="#00ff88" fontSize="13" fontFamily="'Orbitron'" fontWeight="700" textAnchor="middle">TRUE</text>
+        {/* Needle */}
+        <g transform={`translate(150,145)`} style={{transition:animate?"transform 1.2s cubic-bezier(0.34,1.56,0.64,1)":"none"}}>
+          <g transform={`rotate(${angle})`}>
+            <polygon points="0,-108 -6,0 0,14 6,0" fill={color} filter="url(#glow)" opacity="0.95"/>
+            <circle cx="0" cy="0" r="12" fill="#111" stroke={color} strokeWidth="3"/>
+            <circle cx="0" cy="0" r="5" fill={color}/>
+          </g>
+        </g>
+        {/* Center hub glow */}
+        <circle cx="150" cy="145" r="18" fill="none" stroke={color} strokeWidth="2" opacity="0.4" style={{animation:"ripple 2s ease-out infinite"}}/>
+      </svg>
+      {/* Label */}
+      <div style={{textAlign:"center",fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(18px,4vw,28px)",color,letterSpacing:"0.15em",marginTop:-4,animation:"glow 2s ease infinite",textShadow:`0 0 20px ${color}`}}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// LIVE METER BAR
+// ═══════════════════════════════════════════════════════
+function MeterBar({label, value, color, unit="", icon=""}){
+  const pct = Math.max(0,Math.min(100,value*100));
+  return(
+    <div style={{marginBottom:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(9px,2vw,11px)",color:"rgba(255,255,255,0.5)",letterSpacing:"0.1em"}}>{icon} {label}</div>
+        <div style={{fontFamily:"'Orbitron'",fontSize:"clamp(10px,2.2vw,13px)",color,fontWeight:700}}>{Math.round(pct)}{unit}</div>
+      </div>
+      <div style={{height:6,background:"rgba(255,255,255,0.08)",borderRadius:3,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${color}88,${color})`,borderRadius:3,transition:"width 0.4s ease",boxShadow:`0 0 8px ${color}`}}/>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// HEARTBEAT DISPLAY
+// ═══════════════════════════════════════════════════════
+function HeartDisplay({bpm, beating}){
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <div style={{fontSize:"clamp(18px,4vw,26px)",animation:beating?"heartbeat 0.8s ease infinite":"none"}}>❤️</div>
+      <div>
+        <div style={{fontFamily:"'Orbitron'",fontSize:"clamp(20px,5vw,32px)",color:"#ff2550",fontWeight:900,lineHeight:1,textShadow:"0 0 16px #ff2550"}}>{bpm||"--"}</div>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,1.8vw,10px)",color:"rgba(255,37,80,0.6)",letterSpacing:"0.1em"}}>BPM</div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// VOICE WAVEFORM
+// ═══════════════════════════════════════════════════════
+function VoiceWave({active, stress}){
+  const bars=Array(16).fill(0);
+  const color=stress>0.65?"#ff2550":stress>0.4?"#ffc947":"#00d4ff";
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:2,height:32}}>
+      {bars.map((_,i)=>(
+        <div key={i} style={{flex:1,borderRadius:2,background:color,height:"100%",transformOrigin:"bottom",
+          animation:active?`barPulse ${0.3+(i%5)*0.1}s ease-in-out ${i*0.04}s infinite`:"none",
+          transform:active?undefined:"scaleY(0.15)",
+          boxShadow:active?`0 0 4px ${color}`:"none",
+          transition:"background 0.3s"}}/>
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// TICKER TAPE
+// ═══════════════════════════════════════════════════════
+function Ticker({items}){
+  const text = items.join("   ◆   ")+"   ◆   "+items.join("   ◆   ")+"   ◆   ";
+  return(
+    <div style={{overflow:"hidden",whiteSpace:"nowrap",background:"rgba(0,212,255,0.12)",borderTop:"1px solid rgba(0,212,255,0.3)",borderBottom:"1px solid rgba(0,212,255,0.3)",padding:"4px 0"}}>
+      <div style={{display:"inline-block",animation:"ticker 30s linear infinite",fontFamily:"'Share Tech Mono'",fontSize:"clamp(9px,2vw,11px)",color:"#00d4ff",letterSpacing:"0.12em"}}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// LIVE OVERLAY MODE (main broadcast screen)
+// ═══════════════════════════════════════════════════════
+function LiveOverlay({session, onExit}){
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const analyserRef = useRef(null);
+  const analyserFRef = useRef(null);
+  const canvasRef = useRef(null);
+  const facialEngineRef = useRef(new LiveFacialEngine());
+  const vsaEngineRef = useRef(new LiveVSA());
+  const animRef = useRef(null);
+  const recRef = useRef(null);
+  const voiceRef = useRef(null);
+
+  const [phase, setPhase] = useState("setup"); // setup | calibrating | live | verdict | done
+  const [calCountdown, setCalCountdown] = useState(15);
+  const [qIdx, setQIdx] = useState(0);
+  const [responses, setResponses] = useState([]);
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [currentAnswer, setCurrentAnswer] = useState(null);
+
+  // Live sensor values
+  const [bsValue, setBsValue] = useState(0.5); // 0=False, 1=True
+  const [bsLocked, setBsLocked] = useState(false);
+  const [facialScore, setFacialScore] = useState(0.5);
+  const [vsaScore, setVsaScore] = useState(0.5);
+  const [motionScore, setMotionScore] = useState(0);
+  const [pitch, setPitch] = useState(0);
+  const [blinkRate, setBlinkRate] = useState(0);
+  const [gazeDir, setGazeDir] = useState("CENTER");
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [ppgHR, setPpgHR] = useState(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [currentQuestion, setCurrentQuestion] = useState("");
+  const [verdictData, setVerdictData] = useState(null);
+  const [showVerdict, setShowVerdict] = useState(false);
+  const [apiKey, setApiKey] = useState(window.VERITEX_API_KEY||"");
+
+  const ppgRef = useRef({stream:null,rrIntervals:[],samples:[],lastPeak:0,hr:null});
+
+  useEffect(()=>{
+    if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=()=>{voiceRef.current=getVoice();};voiceRef.current=getVoice();}
+  },[]);
+
+  // Start camera + mic
+  useEffect(()=>{
+    let mounted=true;
+    const start=async()=>{
+      try{
+        // Front camera for facial
+        const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:1280,height:720,frameRate:30},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+        if(!mounted){stream.getTracks().forEach(t=>t.stop());return;}
+        streamRef.current=stream;
+        if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();}
+        // Audio analysis
+        const actx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:44100});
+        audioCtxRef.current=actx;
+        const src=actx.createMediaStreamSource(stream);
+        const an=actx.createAnalyser();an.fftSize=2048;src.connect(an);analyserRef.current=an;
+        const anF=actx.createAnalyser();anF.fftSize=1024;src.connect(anF);analyserFRef.current=anF;
+        // Start sensor loop
+        startSensorLoop();
+      }catch(e){console.error("Camera error:",e);}
+      // Back camera for PPG (optional)
+      try{
+        const ppgStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:64,height:64}});
+        ppgRef.current.stream=ppgStream;
+        const track=ppgStream.getVideoTracks()[0];
+        try{await track.applyConstraints({advanced:[{torch:true}]});}catch{}
+        const ppgVideo=document.createElement("video");ppgVideo.srcObject=ppgStream;ppgVideo.setAttribute("playsinline",true);ppgVideo.muted=true;await ppgVideo.play();
+        const ppgCanvas=document.createElement("canvas");ppgCanvas.width=16;ppgCanvas.height=16;const ppgCtx=ppgCanvas.getContext("2d");
+        const ppgLoop=()=>{
+          if(!mounted)return;
+          ppgCtx.drawImage(ppgVideo,0,0,16,16);
+          const d=ppgCtx.getImageData(0,0,16,16).data;let r=0;for(let i=0;i<d.length;i+=4)r+=d[i];
+          const avgR=r/(d.length/4);const finger=avgR>140;
+          if(finger){
+            const now=Date.now();ppgRef.current.samples.push({t:now,v:avgR/255});
+            if(ppgRef.current.samples.length>200)ppgRef.current.samples.shift();
+            const s=ppgRef.current.samples;
+            if(s.length>=60){
+              const w=s.slice(-60);const avg=w.reduce((a,b)=>a+b.v,0)/w.length;
+              const std=Math.sqrt(w.reduce((a,b)=>a+(b.v-avg)**2,0)/w.length);
+              const p=w[w.length-4],l=w[w.length-1];
+              if(p&&p.v>avg+std*0.35&&p.v>l.v){
+                const gap=now-ppgRef.current.lastPeak;
+                if(gap>350&&gap<1500){ppgRef.current.rrIntervals.push(gap);if(ppgRef.current.rrIntervals.length>10)ppgRef.current.rrIntervals.shift();
+                  const rec=ppgRef.current.rrIntervals.slice(-5);const avgRR=rec.reduce((a,b)=>a+b,0)/rec.length;const bpm=Math.round(60000/avgRR);if(bpm>=40&&bpm<=200){setPpgHR(bpm);ppgRef.current.hr=bpm;}}
+                ppgRef.current.lastPeak=now;
+              }
+            }
+          }
+          requestAnimationFrame(ppgLoop);
+        };
+        requestAnimationFrame(ppgLoop);
+      }catch{}
+    };
+    start();
+    return()=>{mounted=false;cancelAnimationFrame(animRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());ppgRef.current.stream?.getTracks().forEach(t=>t.stop());audioCtxRef.current?.close();};
+  },[]);
+
+  const startSensorLoop=()=>{
+    const cv=canvasRef.current;if(!cv)return;
+    const ctx=cv.getContext("2d");
+    const tb=analyserRef.current?new Float32Array(analyserRef.current.fftSize):new Float32Array(2048);
+    const fb=analyserFRef.current?new Uint8Array(analyserFRef.current.frequencyBinCount):new Uint8Array(512);
+    const loop=()=>{
+      if(!videoRef.current||!analyserRef.current){animRef.current=requestAnimationFrame(loop);return;}
+      const now=Date.now();
+      // Facial
+      ctx.drawImage(videoRef.current,0,0,160,120);
+      const imageData=ctx.getImageData(0,0,160,120);
+      const fr=facialEngineRef.current.process(imageData,160,120,now);
+      setFaceDetected(fr.faceDetected);setBlinkRate(fr.blinkRate);setGazeDir(fr.gazeDir);setMotionScore(fr.motion);
+      const decLevel=facialEngineRef.current.deceptionLevel();setFacialScore(decLevel);
+      // Audio
+      analyserRef.current.getFloatTimeDomainData(tb);analyserFRef.current.getByteFrequencyData(fb);
+      const vsaFeat=vsaEngineRef.current.process(tb,fb,audioCtxRef.current?.sampleRate||44100);
+      setPitch(vsaFeat.pitch);setVoiceActive(vsaFeat.voiced);
+      const stress=vsaEngineRef.current.stressLevel(vsaFeat);setVsaScore(stress);
+      // Combined live BS value (0=deceptive, 1=truthful)
+      if(!bsLocked){
+        const combined=1-((decLevel-0.5)*0.6+(stress-0.5)*0.4+Math.random()*0.04);
+        const clamped=Math.max(0.05,Math.min(0.95,combined));
+        setBsValue(prev=>prev*0.85+clamped*0.15);// smooth
+      }
+      animRef.current=requestAnimationFrame(loop);
+    };
+    animRef.current=requestAnimationFrame(loop);
+  };
+
+  // CALIBRATION PHASE
+  useEffect(()=>{
+    if(phase!=="calibrating")return;
+    let count=15;
+    const iv=setInterval(()=>{count--;setCalCountdown(count);if(count<=0){clearInterval(iv);finishCalibration();}},1000);
+    speak("Calibration in progress. Please remain still and silent.",{voice:voiceRef.current,rate:0.85});
+    return()=>clearInterval(iv);
+  },[phase]);
+
+  const finishCalibration=()=>{
+    facialEngineRef.current.setBaseline();
+    const recent=vsaEngineRef.current.pitchHistory.slice(-30);
+    const feat={avgPitch:recent.length?recent.reduce((a,b)=>a+b.pitch,0)/recent.length:150,pitchVariance:20};
+    vsaEngineRef.current.setBaseline(feat);
+    setBsValue(0.5);
+    speak("Calibration complete. The examination will now begin.",{voice:voiceRef.current,rate:0.88}).then(()=>{setPhase("live");setCurrentQuestion(LIVE_QUESTIONS[0]);askQuestion(LIVE_QUESTIONS[0]);});
+  };
+
+  const askQuestion=(q)=>{
+    setBsLocked(false);setBsValue(0.5);setCurrentAnswer(null);setTranscript("");
+    speak(q,{voice:voiceRef.current,rate:0.84,pitch:0.92}).then(()=>{
+      setTimeout(()=>{setListening(true);startListening(q);},300);
+    });
+  };
+
+  const startListening=(q)=>{
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){setListening(false);return;}
+    if(recRef.current){try{recRef.current.stop();}catch{}}
+    const rec=new SR();rec.lang="en-US";rec.interimResults=true;rec.maxAlternatives=3;
+    rec.onresult=e=>{
+      const finals=Array.from(e.results).filter(r=>r.isFinal).map(r=>r[0].transcript).join(" ");
+      const interim=Array.from(e.results).filter(r=>!r.isFinal).map(r=>r[0].transcript).join(" ");
+      setTranscript((finals+" "+interim).trim());
+      if(finals.trim()){const yn=parseYesNo(finals.trim());if(yn){rec.stop();handleAnswer(yn,q);}}
+    };
+    rec.onend=()=>setListening(false);rec.onerror=()=>setListening(false);
+    recRef.current=rec;rec.start();
+  };
+
+  const handleAnswer=async(answer,q)=>{
+    setListening(false);setCurrentAnswer(answer);
+    // Capture current sensor state
+    const decScore=facialEngineRef.current.deceptionLevel();
+    const stressScore=vsaEngineRef.current.stressLevel({avgPitch:pitch,pitchVariance:20});
+    const rawBS=bsValue;
+    // Lock needle
+    setBsLocked(true);
+    const rec={question:q,answer,facialScore:decScore,vsaScore:stressScore,rawBS,bsScore:Math.round(rawBS*10)/10,hr:ppgHR};
+    const newResponses=[...responses,rec];setResponses(newResponses);
+    await speak(answer+".",{voice:voiceRef.current,rate:1.1});
+    await new Promise(r=>setTimeout(r,2500));
+    const nextIdx=qIdx+1;
+    if(nextIdx<LIVE_QUESTIONS.length){
+      setQIdx(nextIdx);setCurrentQuestion(LIVE_QUESTIONS[nextIdx]);askQuestion(LIVE_QUESTIONS[nextIdx]);
+    }else{
+      await speak("Examination complete. Analyzing all responses now.",{voice:voiceRef.current,rate:0.88});
+      setPhase("verdict");await generateVerdict(newResponses);
+    }
+  };
+
+  const generateVerdict=async(allResponses)=>{
+    const avgBS=allResponses.reduce((a,r)=>a+r.bsScore,0)/allResponses.length;
+    const avgFacial=allResponses.reduce((a,r)=>a+r.facialScore,0)/allResponses.length;
+    const avgVSA=allResponses.reduce((a,r)=>a+r.vsaScore,0)/allResponses.length;
+    let verdict={
+      veracityScore:Math.round(avgBS*100),
+      overallBS:+(avgBS).toFixed(2),
+      deceptionRisk:avgFacial>0.6||avgVSA>0.6?"HIGH":avgFacial>0.4||avgVSA>0.4?"MODERATE":"LOW",
+      summary:"Results calculated from multi-modal sensor analysis.",
+      conclusion:avgBS>0.65?"The subject showed consistent truthful indicators throughout the examination.":avgBS>0.45?"Results were inconclusive with mixed deception markers.":"Elevated deception markers were detected across multiple questions.",
+    };
+    if(window.VERITEX_API_KEY){
+      try{
+        const ctx=allResponses.map((r,i)=>`Q${i+1}: "${r.question}" → ${r.answer} | BS:${(r.bsScore*10).toFixed(1)}/10 | FACIAL:${(r.facialScore*100).toFixed(0)}% | VSA:${(r.vsaScore*100).toFixed(0)}%`).join("\n");
+        const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,messages:[{role:"user",content:`You are a live polygraph show host AI. Analyze this examination and produce a dramatic but fair verdict for a live audience. Return ONLY JSON.\n\n${ctx}\n\nReturn: {"veracityScore":<0-100>,"deceptionRisk":"<Low|Moderate|High>","headline":"<dramatic 4-6 word verdict headline in ALL CAPS>","summary":"<2 sentence dramatic analysis for live audience>","conclusion":"<1 final verdict sentence spoken to subject>"}`}]})});
+        const data=await res.json();const txt=(data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
+        const parsed=JSON.parse(txt);verdict={...verdict,...parsed,overallBS:avgBS};
+      }catch{}
+    }
+    setVerdictData(verdict);
+    setTimeout(async()=>{
+      setShowVerdict(true);
+      await speak(`${verdict.headline}. ${verdict.conclusion}`,{voice:voiceRef.current,rate:0.82,pitch:0.88});
+    },800);
+  };
+
+  const startExam=async()=>{
+    if(apiKey)window.VERITEX_API_KEY=apiKey;
+    await speak("Welcome to VERITEX LIVE. The AI polygraph examination is about to begin. Please face the camera and remain still during calibration.",{voice:voiceRef.current,rate:0.86});
+    setPhase("calibrating");
+  };
+
+  const deceptionColor=facialScore>0.65?"#ff2550":facialScore>0.45?"#ffc947":"#00ff88";
+  const q=LIVE_QUESTIONS[qIdx];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000",overflow:"hidden",fontFamily:"'Barlow Condensed',sans-serif"}}>
+      {/* Hidden canvas for facial processing */}
+      <canvas ref={canvasRef} width={160} height={120} style={{display:"none"}}/>
+
+      {/* CAMERA FEED - full screen */}
+      <video ref={videoRef} autoPlay playsInline muted style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",transform:"scaleX(-1)",filter:phase==="calibrating"?"brightness(0.7)":"none",transition:"filter 0.5s"}}/>
+
+      {/* Scanline effect */}
+      <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px)",pointerEvents:"none",zIndex:1}}/>
+
+      {/* Alert overlay when deception high */}
+      {phase==="live"&&facialScore>0.7&&<div style={{position:"absolute",inset:0,zIndex:2,animation:"redAlert 1s ease infinite",pointerEvents:"none"}}/>}
+      {phase==="live"&&facialScore<0.3&&bsValue>0.7&&<div style={{position:"absolute",inset:0,zIndex:2,animation:"greenAlert 1s ease infinite",pointerEvents:"none"}}/>}
+
+      {/* ══ SETUP SCREEN ══ */}
+      {phase==="setup"&&(
+        <div style={{position:"absolute",inset:0,zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.85)",padding:"24px 20px"}}>
+          <div style={{textAlign:"center",maxWidth:400,width:"100%"}}>
+            <div style={{fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(28px,8vw,52px)",color:"#00d4ff",letterSpacing:"0.1em",marginBottom:4,animation:"glow 2s ease infinite"}}>VERITEX</div>
+            <div style={{fontFamily:"'Bebas Neue'",fontSize:"clamp(14px,4vw,22px)",color:"#ffc947",letterSpacing:"0.3em",marginBottom:32}}>LIVE BROADCAST MODE</div>
+            <div style={{background:"rgba(0,212,255,0.08)",border:"1px solid rgba(0,212,255,0.2)",borderRadius:12,padding:20,marginBottom:20,textAlign:"left"}}>
+              <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:"rgba(0,212,255,0.6)",marginBottom:10,letterSpacing:"0.1em"}}>SETUP CHECKLIST</div>
+              {[["📱","Phone/tablet on tripod, camera facing subject"],["🎤","Subject seated with clear face view"],["💡","Good lighting on subject's face"],["📡","Connect to WiFi for best streaming"],["🎬","Open OBS on laptop + screen mirror to stream"]].map(([e,t])=>(
+                <div key={t} style={{display:"flex",gap:10,marginBottom:8,fontSize:"clamp(12px,3vw,14px)",color:"rgba(255,255,255,0.7)"}}><span>{e}</span><span>{t}</span></div>
+              ))}
+            </div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontFamily:"'Share Tech Mono'",fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:8,letterSpacing:"0.1em"}}>ANTHROPIC API KEY (for AI scoring)</div>
+              <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-api03-... (optional)" style={{width:"100%",background:"rgba(0,0,0,0.6)",border:"1px solid rgba(0,212,255,0.3)",color:"#e8f2f8",padding:"10px 14px",borderRadius:6,fontSize:14,fontFamily:"monospace",outline:"none"}}/>
+            </div>
+            <button onClick={startExam} style={{width:"100%",padding:"18px 0",background:"linear-gradient(135deg,#00d4ff,#0099bb)",border:"none",color:"#000",fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(16px,4vw,22px)",letterSpacing:"0.2em",borderRadius:10,cursor:"pointer",marginBottom:12,boxShadow:"0 0 30px rgba(0,212,255,0.4)"}}>
+              ▶ START LIVE SESSION
+            </button>
+            <button onClick={onExit} style={{width:"100%",padding:"12px 0",background:"none",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.4)",fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:14,letterSpacing:"0.1em",borderRadius:8,cursor:"pointer"}}>← BACK TO MAIN APP</button>
+          </div>
+        </div>
+      )}
+
+      {/* ══ CALIBRATION SCREEN ══ */}
+      {phase==="calibrating"&&(
+        <div style={{position:"absolute",inset:0,zIndex:5,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+          <div style={{background:"rgba(0,0,0,0.75)",border:"2px solid rgba(0,212,255,0.4)",borderRadius:16,padding:"32px 40px",textAlign:"center",backdropFilter:"blur(10px)"}}>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(10px,2.5vw,13px)",color:"rgba(0,212,255,0.7)",letterSpacing:"0.2em",marginBottom:16}}>ESTABLISHING BASELINE</div>
+            <div style={{position:"relative",width:120,height:120,margin:"0 auto 16px"}}>
+              <svg width={120} height={120} style={{position:"absolute",inset:0}}>
+                <circle cx={60} cy={60} r={52} fill="none" stroke="rgba(0,212,255,0.15)" strokeWidth={6}/>
+                <circle cx={60} cy={60} r={52} fill="none" stroke="#00d4ff" strokeWidth={6} strokeDasharray={`${(1-calCountdown/15)*327} 327`} strokeLinecap="round" transform="rotate(-90 60 60)" style={{transition:"stroke-dasharray 0.9s"}}/>
+              </svg>
+              <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                <div style={{fontFamily:"'Orbitron'",fontWeight:900,fontSize:36,color:"#00d4ff"}}>{calCountdown}</div>
+                <div style={{fontFamily:"'Share Tech Mono'",fontSize:9,color:"rgba(0,212,255,0.5)"}}>SEC</div>
+              </div>
+            </div>
+            <div style={{fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:"clamp(14px,3.5vw,18px)",color:"rgba(255,255,255,0.8)",letterSpacing:"0.1em"}}>REMAIN STILL & SILENT</div>
+            <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(9px,2vw,11px)",color:"rgba(255,255,255,0.4)",marginTop:8}}>Look directly at the camera</div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ LIVE EXAMINATION OVERLAY ══ */}
+      {(phase==="live"||phase==="verdict")&&(
+        <div style={{position:"absolute",inset:0,zIndex:3,display:"flex",flexDirection:"column",pointerEvents:phase==="verdict"?"none":"auto"}}>
+
+          {/* TOP BAR */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 14px",background:"linear-gradient(180deg,rgba(0,0,0,0.85),transparent)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:"#ff2550",animation:"pulse 1s infinite",boxShadow:"0 0 8px #ff2550"}}/>
+              <div style={{fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(12px,3.5vw,18px)",color:"#fff",letterSpacing:"0.15em"}}>VERITEX LIVE</div>
+            </div>
+            <div style={{display:"flex",gap:12,alignItems:"center"}}>
+              <HeartDisplay bpm={ppgHR} beating={!!ppgHR}/>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,2vw,10px)",color:"rgba(255,255,255,0.4)",letterSpacing:"0.1em"}}>Q {qIdx+1}/{LIVE_QUESTIONS.length}</div>
+                <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,2vw,10px)",color:faceDetected?"#00ff88":"#ff2550"}}>👁 {faceDetected?"LOCKED":"NO FACE"}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* FACE DETECTION CORNERS */}
+          {faceDetected&&<div style={{position:"absolute",top:60,left:20,width:60,height:60,borderTop:`3px solid ${deceptionColor}`,borderLeft:`3px solid ${deceptionColor}`,opacity:0.7}}/>}
+          {faceDetected&&<div style={{position:"absolute",top:60,right:20,width:60,height:60,borderTop:`3px solid ${deceptionColor}`,borderRight:`3px solid ${deceptionColor}`,opacity:0.7}}/>}
+
+          {/* QUESTION LOWER THIRD */}
+          <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(0deg,rgba(0,0,0,0.95) 0%,rgba(0,0,0,0.85) 70%,transparent 100%)"}}>
+
+            {/* Ticker */}
+            <Ticker items={[
+              `FACIAL DECEPTION: ${(facialScore*100).toFixed(0)}%`,
+              `VOICE STRESS: ${(vsaScore*100).toFixed(0)}%`,
+              `PITCH: ${pitch}Hz`,
+              `GAZE: ${gazeDir}`,
+              `BLINK RATE: ${blinkRate}/min`,
+              `MOTION: ${(motionScore*100).toFixed(1)}%`,
+              `Q${qIdx+1} OF ${LIVE_QUESTIONS.length}`,
+              `HR: ${ppgHR||"CONNECT FINGER"}bpm`,
+            ]}/>
+
+            <div style={{padding:"10px 14px 14px"}}>
+              {/* Question text */}
+              <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,2vw,10px)",color:"rgba(0,212,255,0.7)",letterSpacing:"0.15em",marginBottom:6}}>EXAMINATION QUESTION {qIdx+1}</div>
+              <div style={{fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:"clamp(14px,4vw,22px)",color:"#fff",lineHeight:1.3,marginBottom:10,animation:"fadeIn 0.5s ease"}}>{currentQuestion}</div>
+
+              {/* Answer + transcript */}
+              {currentAnswer&&<div style={{display:"inline-block",padding:"4px 16px",background:currentAnswer==="Yes"?"rgba(0,255,136,0.2)":"rgba(255,37,80,0.2)",border:`1px solid ${currentAnswer==="Yes"?"#00ff88":"#ff2550"}`,borderRadius:20,fontFamily:"'Orbitron'",fontWeight:700,fontSize:"clamp(12px,3.5vw,18px)",color:currentAnswer==="Yes"?"#00ff88":"#ff2550",marginBottom:8}}>{currentAnswer.toUpperCase()}</div>}
+              {listening&&!currentAnswer&&<div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(9px,2vw,11px)",color:"rgba(0,212,255,0.8)",animation:"pulse 1s infinite",marginBottom:6}}>⬤ LISTENING… {transcript}</div>}
+
+              {/* BS METER */}
+              <div style={{marginTop:6}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <div style={{fontFamily:"'Orbitron'",fontWeight:700,fontSize:"clamp(9px,2.5vw,12px)",color:"rgba(255,201,71,0.8)",letterSpacing:"0.15em"}}>BS METER</div>
+                  <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,2vw,10px)",color:"rgba(255,255,255,0.4)"}}>{bsLocked?"LOCKED":"LIVE"}</div>
+                </div>
+                <BSNeedle value={bsValue} animate={!bsLocked}/>
+              </div>
+
+              {/* Live sensor meters */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 16px",marginTop:12}}>
+                <MeterBar label="FACIAL DECEPTION" value={facialScore} color={facialScore>0.6?"#ff2550":facialScore>0.4?"#ffc947":"#00ff88"} unit="%"/>
+                <MeterBar label="VOICE STRESS" value={vsaScore} color={vsaScore>0.6?"#ff2550":vsaScore>0.4?"#ffc947":"#00d4ff"} unit="%"/>
+              </div>
+
+              {/* Voice waveform */}
+              <div style={{marginTop:8,display:"flex",alignItems:"center",gap:10}}>
+                <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,1.8vw,10px)",color:"rgba(255,255,255,0.4)",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>VOICE</div>
+                <div style={{flex:1}}><VoiceWave active={voiceActive} stress={vsaScore}/></div>
+                <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,2vw,10px)",color:"rgba(0,212,255,0.7)",whiteSpace:"nowrap"}}>{pitch>0?pitch+"Hz":"--"}</div>
+              </div>
+
+              {/* Manual buttons */}
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <button onClick={()=>handleAnswer("Yes",currentQuestion)} disabled={!!currentAnswer} style={{flex:1,padding:"10px 0",background:"rgba(0,255,136,0.15)",border:`2px solid ${currentAnswer?"rgba(0,255,136,0.2)":"#00ff88"}`,color:"#00ff88",fontFamily:"'Orbitron'",fontWeight:700,fontSize:"clamp(12px,3vw,16px)",borderRadius:8,cursor:currentAnswer?"not-allowed":"pointer",letterSpacing:"0.1em",opacity:currentAnswer?0.5:1}}>YES</button>
+                <button onClick={()=>handleAnswer("No",currentQuestion)} disabled={!!currentAnswer} style={{flex:1,padding:"10px 0",background:"rgba(255,37,80,0.15)",border:`2px solid ${currentAnswer?"rgba(255,37,80,0.2)":"#ff2550"}`,color:"#ff2550",fontFamily:"'Orbitron'",fontWeight:700,fontSize:"clamp(12px,3vw,16px)",borderRadius:8,cursor:currentAnswer?"not-allowed":"pointer",letterSpacing:"0.1em",opacity:currentAnswer?0.5:1}}>NO</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ VERDICT OVERLAY ══ */}
+      {showVerdict&&verdictData&&(
+        <div style={{position:"absolute",inset:0,zIndex:20,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.92)",animation:"verdictSlam 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards"}}>
+          <div style={{textAlign:"center",padding:"0 24px",maxWidth:480,width:"100%"}}>
+            <div style={{fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(10px,3vw,14px)",color:"rgba(255,201,71,0.7)",letterSpacing:"0.3em",marginBottom:12}}>FINAL VERDICT</div>
+            <div style={{fontFamily:"'Bebas Neue'",fontSize:"clamp(28px,10vw,64px)",color:verdictData.deceptionRisk==="HIGH"?"#ff2550":verdictData.deceptionRisk==="MODERATE"?"#ffc947":"#00ff88",letterSpacing:"0.1em",lineHeight:1,marginBottom:16,animation:"glow 1.5s ease infinite",textShadow:`0 0 40px ${verdictData.deceptionRisk==="HIGH"?"#ff2550":verdictData.deceptionRisk==="MODERATE"?"#ffc947":"#00ff88"}`}}>
+              {verdictData.headline||`DECEPTION RISK: ${verdictData.deceptionRisk}`}
+            </div>
+
+            {/* Big BS needle */}
+            <div style={{maxWidth:320,margin:"0 auto 20px"}}>
+              <BSNeedle value={verdictData.overallBS} animate={false}/>
+            </div>
+
+            {/* Scores */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+              {[{l:"VERACITY",v:verdictData.veracityScore,u:"%",c:verdictData.veracityScore>65?"#00ff88":verdictData.veracityScore>45?"#ffc947":"#ff2550"},{l:"RISK",v:verdictData.deceptionRisk,u:"",c:verdictData.deceptionRisk==="HIGH"?"#ff2550":verdictData.deceptionRisk==="MODERATE"?"#ffc947":"#00ff88"},{l:"RESPONSES",v:responses.length,u:" Q",c:"#00d4ff"}].map(s=>(
+                <div key={s.l} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${s.c}33`,borderRadius:8,padding:"10px 6px",textAlign:"center"}}>
+                  <div style={{fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(16px,5vw,26px)",color:s.c,lineHeight:1}}>{s.v}{s.u}</div>
+                  <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(7px,1.8vw,9px)",color:"rgba(255,255,255,0.4)",marginTop:3,letterSpacing:"0.1em"}}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{fontFamily:"'Barlow Condensed'",fontSize:"clamp(13px,3.5vw,17px)",color:"rgba(255,255,255,0.7)",lineHeight:1.6,marginBottom:20}}>{verdictData.conclusion}</div>
+
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setShowVerdict(false);setPhase("setup");setQIdx(0);setResponses([]);setBsValue(0.5);setVerdictData(null);}} style={{flex:1,padding:"14px 0",background:"rgba(0,212,255,0.15)",border:"1px solid rgba(0,212,255,0.4)",color:"#00d4ff",fontFamily:"'Orbitron'",fontWeight:700,fontSize:"clamp(11px,3vw,14px)",borderRadius:8,cursor:"pointer",letterSpacing:"0.1em"}}>NEW SESSION</button>
+              <button onClick={onExit} style={{flex:1,padding:"14px 0",background:"none",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.4)",fontFamily:"'Barlow Condensed'",fontWeight:600,fontSize:"clamp(12px,3vw,15px)",borderRadius:8,cursor:"pointer"}}>EXIT LIVE</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ EXIT BUTTON (live phase) ══ */}
+      {phase==="live"&&(
+        <button onClick={()=>{if(confirm("Exit live session?"))onExit();}} style={{position:"absolute",top:12,right:14,zIndex:10,background:"rgba(255,37,80,0.2)",border:"1px solid rgba(255,37,80,0.4)",color:"rgba(255,37,80,0.8)",padding:"6px 12px",borderRadius:6,fontFamily:"'Share Tech Mono'",fontSize:10,cursor:"pointer",letterSpacing:"0.1em"}}>✕ EXIT</button>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// MAIN SPLASH WITH LIVE MODE BUTTON
+// ═══════════════════════════════════════════════════════
+function App(){
+  const [mode, setMode] = useState("splash"); // splash | live
+
+  if(mode==="live") return <LiveOverlay session={{}} onExit={()=>setMode("splash")}/>;
+
+  return(
+    <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 50% 40%,#06111e,#020508 70%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 20px",position:"relative",overflow:"hidden"}}>
+      {/* Grid */}
+      <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(#162030 1px,transparent 1px),linear-gradient(90deg,#162030 1px,transparent 1px)",backgroundSize:"50px 50px",opacity:0.15}}/>
+      {/* Scanline */}
+      <div style={{position:"absolute",top:0,left:0,right:0,height:"2px",background:"linear-gradient(90deg,transparent,rgba(0,212,255,0.4),transparent)",animation:"scanline 4s linear infinite",pointerEvents:"none"}}/>
+
+      <div style={{textAlign:"center",zIndex:1,maxWidth:360,width:"100%"}}>
+        {/* Logo */}
+        <div style={{position:"relative",width:120,height:120,margin:"0 auto 24px"}}>
+          <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"2px solid rgba(0,212,255,0.5)",animation:"spinDial 12s linear infinite"}}/>
+          <div style={{position:"absolute",inset:8,borderRadius:"50%",border:"1px solid rgba(255,201,71,0.3)",animation:"spinDial 8s linear infinite reverse"}}/>
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42}}>🧠</div>
+        </div>
+
+        <div style={{fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(32px,10vw,52px)",color:"#e8f2f8",letterSpacing:"0.18em",animation:"glow 3s ease infinite",marginBottom:4}}>VERITEX</div>
+        <div style={{fontFamily:"'Bebas Neue'",fontSize:"clamp(12px,4vw,18px)",color:"#00d4ff",letterSpacing:"0.35em",marginBottom:4}}>AI POLYGRAPH SYSTEM</div>
+        <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,2.5vw,10px)",color:"rgba(255,201,71,0.7)",letterSpacing:"0.2em",marginBottom:48}}>v8.0 · BROADCAST EDITION</div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* LIVE MODE - big featured button */}
+          <button onClick={()=>setMode("live")} style={{padding:"20px 32px",background:"linear-gradient(135deg,rgba(255,37,80,0.25),rgba(255,37,80,0.1))",border:"2px solid #ff2550",color:"#ff2550",fontFamily:"'Orbitron'",fontWeight:900,fontSize:"clamp(14px,4.5vw,20px)",letterSpacing:"0.15em",borderRadius:10,cursor:"pointer",boxShadow:"0 0 30px rgba(255,37,80,0.25)",display:"flex",alignItems:"center",justifyContent:"center",gap:12,animation:"glow 2s ease infinite"}}>
+            <span style={{fontSize:"clamp(18px,5vw,24px)"}}>🔴</span>
+            <span>GO LIVE</span>
+          </button>
+
+          <div style={{fontFamily:"'Share Tech Mono'",fontSize:"clamp(8px,2vw,10px)",color:"rgba(255,255,255,0.25)",letterSpacing:"0.12em",margin:"4px 0"}}>— OR USE FULL EXAMINATION MODE —</div>
+
+          <a href="veritex-v8.html" style={{display:"block",padding:"14px 28px",background:"rgba(0,212,255,0.1)",border:"1px solid rgba(0,212,255,0.4)",color:"#00d4ff",fontFamily:"'Barlow Condensed'",fontWeight:700,fontSize:"clamp(13px,4vw,17px)",letterSpacing:"0.15em",borderRadius:8,cursor:"pointer",textDecoration:"none",textAlign:"center"}}>FULL EXAMINATION MODE →</a>
+        </div>
+
+        {/* Feature badges */}
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:32}}>
+          {["📡 BLUETOOTH","🎤 VOICE STRESS","👁 FACIAL AI","💓 CARDIAC","📊 LIVE METERS","🧭 BS NEEDLE"].map(f=>(
+            <div key={f} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"4px 12px",fontFamily:"'Share Tech Mono'",fontSize:"clamp(7px,2vw,9px)",color:"rgba(255,255,255,0.4)",letterSpacing:"0.08em"}}>{f}</div>
+          ))}
+        </div>
+
+        <div style={{marginTop:32,fontFamily:"'Share Tech Mono'",fontSize:"clamp(7px,2vw,9px)",color:"rgba(255,255,255,0.2)",lineHeight:1.8}}>
+          FOR ENTERTAINMENT & RESEARCH ONLY<br/>NOT A LEGALLY ADMISSIBLE INSTRUMENT
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
